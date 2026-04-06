@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: function-runner
+  namespace: default
+  labels:
+    app: function-runner
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: function-runner
+  template:
+    metadata:
+      labels:
+        app: function-runner
+    spec:
+      runtimeClassName: kata
+      containers:
+        - name: function-runner
+          image: function-runner:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: WORKER_MEMORY_LIMIT
+              value: "25165824" # 24MB
+            - name: TASK_TIMEOUT_MS
+              value: "5000"
+            - name: VM_MAX_STACK_SIZE
+              value: "1048576"
+            - name: VM_EXECUTION_TIMEOUT_MS
+              value: "5000"
+            - name: MAX_WORKERS
+              value: "8"
+            - name: MIN_WORKERS
+              value: "1"
+            - name: MAX_TASKS_PER_WORKER
+              value: "1"
+            - name: FUNCTION_STORAGE_URL
+              value: "http://function-storage:4001"
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: function-runner-secrets
+                  key: api-key
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 750m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - function-runner
+                topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: function-runner
+  namespace: default
+  labels:
+    app: function-runner
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+      protocol: TCP
+  selector:
+    app: function-runner

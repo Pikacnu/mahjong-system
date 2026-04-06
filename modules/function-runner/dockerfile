@@ -1,0 +1,12 @@
+FROM oven/bun AS builder
+WORKDIR /app
+COPY . .
+RUN bun install --frozen-lockfile
+RUN bun build index.ts --compile --outfile function-runner
+
+FROM busybox
+WORKDIR /app
+COPY --from=builder /app/function-runner .
+RUN chmod +x function-runner
+EXPOSE 3000
+CMD ["./function-runner"]

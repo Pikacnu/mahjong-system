@@ -1,0 +1,15 @@
+lint:
+  rules:
+    # 啟用嚴格模式：不允許未開啟的規則
+    no_default: true
+
+    # 套用的規則
+    add:
+      # 命名規則
+      - MESSAGE_NAMES_UPPER_CAMEL_CASE
+      - SERVICE_NAMES_UPPER_CAMEL_CASE
+      - ENUM_NAMES_UPPER_CAMEL_CASE
+      - ENUM_FIELD_NAMES_UPPER_SNAKE_CASE
+      - FIELD_NAMES_LOWER_SNAKE_CASE
+      - FILE_NAMES_LOWER_SNAKE_CASE
+      - RPC_NAMES_UPPER_CAMEL_CASE

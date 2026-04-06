@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package mahjong.code_storage.v1;
+
+import "common.proto";
+import "google/protobuf/empty.proto";
+
+// MethodInfo represents the metadata for a piece of code, including its name and version.
+message MethodInfo {
+  string name = 1;
+  int32 version = 2;
+}
+
+message FullMethodInfo {
+  MethodInfo method_info = 1;
+  ResourceType resource_type = 2;
+  string method_id = 3;
+}
+
+enum ResourceType {
+  FUNCTION = 0;
+  MODULE   = 1;
+}
+
+enum ResourceSource {
+  BUILTIN = 0;
+  USER    = 1;
+}
+
+// GetCodeInfoRequest retrieves the code for a given function name and version.
+message GetMethodInfoRequest {
+  MethodInfo method_info = 1;
+  optional ResourceSource resource_source = 2;
+}
+
+message GetMethodInfoResponse {
+  repeated MethodInfo dependencies = 1;
+}
+
+// GetCodeVersionRequest retrieves all available versions for a given function name.
+message GetCodeVersionRequest {
+  string function_name = 1;
+  ResourceType resource_type = 2;
+  optional ResourceSource resource_source = 3;
+}
+
+// GetCodeVersionResponse returns all available versions for a given function name, 
+// or an error code if not found.
+message GetCodeVersionResponse {
+  repeated int32 versions = 1;
+}
+
+// GetResourceDataRequest retrieves the code for a given function name and version.
+message GetResourceDataRequest {
+  MethodInfo method_info = 1;
+}
+
+// GetResourceDataResponse returns the code string for the requested function and version, 
+// or an error code if not found.
+message GetResourceDataResponse {
+  string code = 1;
+  bytes hash = 2;
+}
+
+// StoreResourcesRequest stores the code for a given function name and version.
+message StoreResourcesRequest {
+  MethodInfo method_info = 1;
+  string data = 2;
+  ResourceType resource_type = 3;
+  ResourceSource source_type = 4;
+  repeated string dependencies = 5;
+}
+
+// StoreResourcesResponse returns an error code indicating the success or failure of 
+// the store operation.
+
+// StorageService provides RPC endpoints for storing and retrieving Mahjong
+// function code and resources (builtin modules, etc.).
+service StorageService {
+  // GetMethodInfo retrieves the metadata for a given function name and version.
+  // To get method's dependencies
+  rpc GetMethodInfo(GetMethodInfoRequest) returns (GetMethodInfoResponse);
+  // GetResourcesVersions retrieves all available versions for a given function name.
+  rpc GetResourcesVersions(GetCodeVersionRequest) returns (GetCodeVersionResponse);
+  // GetResourcesData retrieves the code for a given function name and version.
+  rpc GetResourcesData(GetResourceDataRequest) returns (GetResourceDataResponse);
+  // StoreResources stores the code for a given function name and version.
+  // Note: This method can be used for both creating new code and updating existing code.
+  rpc StoreResources(StoreResourcesRequest) returns (google.protobuf.Empty);
+}

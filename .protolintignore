@@ -1,0 +1,6 @@
+version: v1
+
+# 構建設定：指向上層 proto 來源
+build:
+  roots:
+    - ../src

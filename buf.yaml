@@ -1,0 +1,22 @@
+version: v1
+
+# 指定 proto 檔案根目錄
+roots:
+  - proto_root: modules/proto/src
+
+# Lint 規則
+lint:
+  use:
+    - COMMENTS
+    - ENUM_ZERO_FIRST_IN_FILE
+    - FILE_LOWER_SNAKE_CASE
+    - MESSAGE_PASCAL_CASE
+    - PACKAGE_DIRECTORY_MATCH
+    - PACKAGE_LOWER_SNAKE_CASE
+    - RPC_PASCAL_CASE
+    - FIELD_NAMES_LOWER_SNAKE_CASE
+
+# Breaking change 檢查設定
+breaking:
+  ignores:
+    - comment

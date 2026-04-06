@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package mahjong.common.v1;
+
+// ErrorCode defines common error codes for RPC responses.
+enum ErrorCode {
+  NONE             = 0;
+  NOT_FOUND        = 1;
+  INVALID_ARGUMENT = 2;
+  INTERNAL_ERROR   = 3;
+  ALREADY_EXISTS   = 4;
+  PERMISSION_DENIED = 5;
+}
+
+// ExecuteResourceType indicates the type of resource being executed, such as a function or module.
+enum ExecuteResourceType {
+  FUNCTION = 0;
+  MODULE   = 1;
+}
+
+// Hash => bigint(need to migrate to bytes in ts code)
+// JS Number Max => int64

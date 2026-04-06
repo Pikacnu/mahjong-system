@@ -1,0 +1,19 @@
+{
+  "name": "function-storage",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.1",
+    "postgre": "^0.1.8",
+    "utils": "workspace:*",
+    "proto": "workspace:*"
+  }
+}

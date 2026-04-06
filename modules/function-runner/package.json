@@ -1,0 +1,21 @@
+{
+  "name": "function-runner",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run index.ts",
+    "dev": "bun --watch run index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "quickjs-emscripten": "^0.32.0",
+    "utils": "workspace:*",
+    "proto": "workspace:*"
+  }
+}

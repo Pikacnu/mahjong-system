@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package mahjong.runner.v1;
+import "common.proto";
+
+// FunctionInfo represents the metadata for a function,
+// including its name and version.
+message FunctionInfo {
+  string name    = 1;
+  int32  version = 2;
+}
+
+// FunctionRequest contains the information needed to execute a function,
+// including its name, version, and arguments.
+message FunctionRequest {
+  FunctionInfo function_info = 1;
+  message Payload {
+    bytes          this = 1;
+    repeated bytes args = 2;
+  }
+  Payload payload = 2;
+}
+
+// FunctionResponse contains the result of executing a function,
+// or an error code if execution failed.
+message FunctionResponse {
+  bytes result = 1;
+}
+
+// RunnerService provides RPC endpoints for executing Mahjong functions.
+service RunnerService {
+  // RunFunction executes a function with name / version / args
+  // and returns the result or error code.
+  rpc RunFunction(FunctionRequest) returns (FunctionResponse);
+  // RunYukuCheck executes a specific Yuku check function (placeholder for
+  // specialized game logic as needed).
+  rpc RunYukuCheck(FunctionRequest) returns (FunctionResponse);
+}

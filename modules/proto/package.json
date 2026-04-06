@@ -1,0 +1,21 @@
+{
+  "name": "proto",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "generate": "protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto.cmd --proto_path=./src/proto --ts_proto_out=./src/generated --ts_proto_opt=esModuleInterop=true,env=node,outputServices=grpc-js,useOptionals=messages common.proto services/runner.proto services/storage.proto",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.2.5",
+    "@grpc/grpc-js": "^1.14.0",
+    "ts-proto": "^2.11.6"
+  }
+}
