@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package mahjong.runner.v1;
 import "common.proto";
+import "google/protobuf/empty.proto";
 
 // FunctionInfo represents the metadata for a function,
 // including its name and version.
@@ -27,6 +28,43 @@ message FunctionResponse {
   bytes result = 1;
 }
 
+// CreateLiveModuleRequest contains the information needed to create a live module,
+// including its name, version, and code.
+message CreateLiveModuleRequest {
+  LiveModuleManifest manifest = 1;
+  string             code     = 2;
+}
+
+// LiveModuleManifest represents the metadata for a live module,
+// including its name and version.
+message LiveModuleManifest {
+  string name    = 1;
+  int32  version = 2;
+}
+
+// CreateLiveModuleResponse contains the result of creating a live module,
+// including the module ID or an error code if creation failed.
+message CreateLiveModuleResponse {
+  string module_id = 1;
+}
+
+// LiveModuleRunRequest contains the information needed to execute a live module,
+// including its module ID and arguments.
+message LiveModuleRunRequest {
+  string module_id = 1;
+  message Payload {
+    bytes          this = 1;
+    repeated bytes args = 2;
+  }
+  Payload payload = 2;
+}
+
+// RemoveLiveModuleRequest contains the information needed to remove a live module,
+// including its module ID.
+message RemoveLiveModuleRequest {
+  string module_id = 1;
+}
+
 // RunnerService provides RPC endpoints for executing Mahjong functions.
 service RunnerService {
   // RunFunction executes a function with name / version / args
@@ -35,4 +73,10 @@ service RunnerService {
   // RunYukuCheck executes a specific Yuku check function (placeholder for
   // specialized game logic as needed).
   rpc RunYukuCheck(FunctionRequest) returns (FunctionResponse);
+  // CreateLiveModule creates a live module with the given name, version, and code.
+  rpc CreateLiveModule(CreateLiveModuleRequest) returns (CreateLiveModuleResponse);
+  // RunLiveModule executes a live module with the given module ID and arguments.
+  rpc RunLiveModule(LiveModuleRunRequest) returns (FunctionResponse);
+  // RemoveLiveModule removes a live module with the given module ID.
+  rpc RemoveLiveModule(RemoveLiveModuleRequest) returns (google.protobuf.Empty);
 }

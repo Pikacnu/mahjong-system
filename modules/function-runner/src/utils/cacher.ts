@@ -1,3 +1,5 @@
+import type { FunctionInfo } from 'proto/src/generated/services/runner';
+
 export type createCacherOptions = {
   MaxEntrys?: number;
   CacheTimeoutMin?: number;
@@ -10,9 +12,31 @@ class Cacher<T> {
     CacheTimeoutMin: 60,
   };
 
+  private cleanUpIntervalId: NodeJS.Timeout;
+
   constructor(options?: createCacherOptions) {
     if (options) {
       this.options = { ...this.options, ...options };
+    }
+    this.cleanUpIntervalId = setInterval(
+      () => {
+        this.cleanUpCache();
+      },
+      (this.options.CacheTimeoutMin! * 60 * 1000) / 4,
+    );
+  }
+
+  private isCacheExpired(entryTime: number): boolean {
+    const currentTime = Date.now();
+    return currentTime - entryTime > this.options.CacheTimeoutMin! * 60 * 1000;
+  }
+
+  public cleanUpCache() {
+    for (const [key, value] of this.cache.entries()) {
+      const entryTime = (value as any).entryTime;
+      if (this.isCacheExpired(entryTime)) {
+        this.cache.delete(key);
+      }
     }
   }
 
@@ -38,6 +62,19 @@ class Cacher<T> {
   public getCacheKeys(): string[] {
     return Array.from(this.cache.keys());
   }
+
+  public cleanCache() {
+    this.cache.clear();
+  }
+
+  public hasCache(key: string): boolean {
+    return this.cache.has(key);
+  }
+
+  public clean() {
+    this.cleanUpCache();
+    clearInterval(this.cleanUpIntervalId);
+  }
 }
 
 export class CodeCacher extends Cacher<string> {
@@ -53,23 +90,32 @@ export class CodeCacher extends Cacher<string> {
     return this.instance;
   }
 
-  public addCode(functionName: string, code: string) {
-    this.addCache(functionName, code);
+  private generateKey(functionInfo: FunctionInfo): string {
+    return `${functionInfo.name}_${functionInfo.version}`;
   }
 
-  public getCode(functionName: string): string | undefined {
-    return this.getCache(functionName);
+  public addCode(functionInfo: FunctionInfo, code: string) {
+    this.addCache(this.generateKey(functionInfo), code);
   }
 
-  public setCode(functionName: string, code: string) {
-    this.addCache(functionName, code);
+  public setCode(functionInfo: FunctionInfo, code: string) {
+    this.setCache(this.generateKey(functionInfo), code);
   }
 
-  public hasCode(functionName: string): boolean {
-    return this.getCache(functionName) !== undefined;
+  public getCode(functionInfo: FunctionInfo): string | undefined {
+    return this.getCache(this.generateKey(functionInfo));
+  }
+
+  public hasCode(functionInfo: FunctionInfo): boolean {
+    return this.getCache(this.generateKey(functionInfo)) !== undefined;
   }
 
   public getAllFunctionNames(): string[] {
     return this.getCacheKeys();
+  }
+
+  public override clean() {
+    super.clean();
+    this.cleanCache();
   }
 }

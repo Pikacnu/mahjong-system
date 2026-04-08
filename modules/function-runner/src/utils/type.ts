@@ -16,8 +16,20 @@ export type WorkerManagerOptions = {
 };
 
 export enum WorkerMessageEnum {
-  RunTask,
+  // Common
   Initialize,
+  AddModules,
+  SetDependencyVersions,
+  DeleteModules,
+  GetMissingDependencies,
+  // function-runner related
+  RunTask,
+  // live-code related
+  InitLiveModule,
+  GetValueOfLiveModule,
+  SetValueOfLiveModule,
+  RunFunctionOfLiveModule,
+  DeleteLiveModule,
 }
 
 export enum WorkerMessageStatusEnum {
@@ -32,14 +44,48 @@ export type WorkerMessage<T extends keyof WorkerPayload = any> = {
   status?: WorkerMessageStatusEnum;
 };
 
-type WorkerPayload = {
+export type WorkerPayload = {
   [WorkerMessageEnum.RunTask]: RunTaskPayload;
+  [WorkerMessageEnum.AddModules]: Array<ModuleData>;
+  [WorkerMessageEnum.DeleteModules]: ModuleData;
+  [WorkerMessageEnum.SetDependencyVersions]: ModuleDependency[];
+  [WorkerMessageEnum.GetMissingDependencies]: ModuleDependency[];
+
+  [WorkerMessageEnum.InitLiveModule]: Omit<
+    RunTaskPayload,
+    'functionArgs' | 'options'
+  >;
+  [WorkerMessageEnum.GetValueOfLiveModule]: { name: string };
+  [WorkerMessageEnum.SetValueOfLiveModule]: { name: string; value: any };
+  [WorkerMessageEnum.RunFunctionOfLiveModule]: {
+    functionName: string;
+    functionArgs: {
+      this: any;
+      args: any[];
+    };
+  };
+  [WorkerMessageEnum.DeleteLiveModule]: undefined;
 };
 
 export type RunTaskPayload = {
   code: string;
   options?: Partial<VMOptions>;
   functionArgs: VMFunctionArgs;
+  dependencies?: Array<{
+    name: string;
+    version: number;
+  }>;
+};
+
+export type ModuleData = {
+  name: string;
+  code: string;
+  version: number;
+  hash: bigint;
+};
+export type ModuleDependency = {
+  name: string;
+  version: number;
 };
 
 export type WorkerEntry = {

@@ -1,18 +1,24 @@
 import { Metadata, Server } from '@grpc/grpc-js';
 import { Status } from '@grpc/grpc-js/build/src/constants';
-import {
-  MahjongRunnerV1,
-  MahjongCodeStorageV1,
-  MahjongCommonV1,
-  unaryCall,
-} from 'proto';
+import { MahjongRunnerV1, MahjongCodeStorageV1, unaryCall } from 'proto';
 import { ErrorCode } from 'proto/src/generated/common';
 import { storageServiceClient } from './storage-client';
-import { ModuleManager } from '../utils/moduleManager';
+import { ModuleManager } from '../manager/moduleManager';
+import { WorkerManager } from '../manager/normal_runner_manager';
+import type { RunTaskPayload, VMOptions } from '../utils/type';
+import type { CodeCacher } from '../utils/cacher';
 
 const moduleManager = ModuleManager.getInstance();
 
-function createGrpcServer(handlers: any): Server {
+export function createFunctionRunnerGRPCHandler({
+  normalRunnerManager,
+  defaultVMOptions,
+  runCodeCacher,
+}: {
+  normalRunnerManager: WorkerManager;
+  defaultVMOptions?: Partial<VMOptions>;
+  runCodeCacher: CodeCacher;
+}): Server {
   const server = new Server();
   server.addService(MahjongRunnerV1.RunnerServiceService, {
     runFunction: async (call, callback) => {
@@ -20,7 +26,7 @@ function createGrpcServer(handlers: any): Server {
       if (!functionInfo || !payload) {
         const errorMetadata = new Metadata();
         errorMetadata.set('error-code', ErrorCode.INVALID_ARGUMENT.toString());
-        callback(
+        return callback(
           {
             code: Status.INVALID_ARGUMENT,
             details: 'Missing functionInfo or payload in request',
@@ -30,17 +36,22 @@ function createGrpcServer(handlers: any): Server {
         );
       }
       try {
+        // get function dependencies list
         const dependenciesResponse = await unaryCall(
           storageServiceClient.getMethodInfo.bind(storageServiceClient),
           {
             methodInfo: functionInfo,
           } as MahjongCodeStorageV1.GetMethodInfoRequest,
         );
-        const dependencies = dependenciesResponse.dependencies || [];
 
-        if (dependencies.length > 0) {
-          const fullDependencies = await Promise.allSettled(
-            dependencies.map(async (dep) => {
+        const dependencies = dependenciesResponse.dependencies || [];
+        const notCachedDependencies = dependencies.filter(
+          (dep) => !moduleManager.getModule(dep.name),
+        );
+        if (notCachedDependencies.length > 0) {
+          // fetch all dependencies code and add to module manager
+          const notCachedDependenciesResults = await Promise.allSettled(
+            notCachedDependencies.map(async (dep) => {
               const dependencyCode = await unaryCall(
                 storageServiceClient.getResourcesData.bind(
                   storageServiceClient,
@@ -57,7 +68,8 @@ function createGrpcServer(handlers: any): Server {
               };
             }),
           );
-          fullDependencies
+
+          notCachedDependenciesResults
             .filter(
               (
                 res,
@@ -76,8 +88,72 @@ function createGrpcServer(handlers: any): Server {
                 hash: result.value.hash,
               });
             });
+          if (
+            notCachedDependenciesResults.some(
+              (res) => res.status === 'rejected',
+            )
+          ) {
+            console.warn(
+              'Some dependencies failed to fetch:',
+              notCachedDependenciesResults.filter(
+                (res): res is PromiseRejectedResult =>
+                  res.status === 'rejected',
+              ),
+            );
+            return callback(
+              {
+                code: Status.INTERNAL,
+                details: 'Failed to fetch some dependencies',
+              },
+              null,
+            );
+          }
         }
-        const result = await handlers.runFunction(functionInfo, payload);
+        // get main function code
+        let functionCode: string;
+        const cachedCode = runCodeCacher.getCode(functionInfo);
+        if (!cachedCode) {
+          const functionCodeResponse = await unaryCall(
+            storageServiceClient.getResourcesData.bind(storageServiceClient),
+            {
+              methodInfo: functionInfo,
+            } as MahjongCodeStorageV1.GetResourceDataRequest,
+          );
+          if (!functionCodeResponse.code) {
+            return callback(
+              {
+                code: Status.INTERNAL,
+                details: 'Failed to fetch function code',
+              },
+              null,
+            );
+          }
+          functionCode = functionCodeResponse.code;
+          runCodeCacher.setCode(functionInfo, functionCode);
+        } else {
+          functionCode = cachedCode;
+        }
+        if (!functionCode) {
+          return callback(
+            {
+              code: Status.INTERNAL,
+              details: 'Function code is empty',
+            },
+            null,
+          );
+        }
+        const executeFunctionPayload: RunTaskPayload = {
+          functionArgs: {
+            this: payload?.this || null,
+            args: payload?.args || [],
+          },
+          code: functionCode,
+          options: defaultVMOptions,
+          dependencies,
+        };
+        const result = await normalRunnerManager.execute(
+          executeFunctionPayload,
+        );
         callback(null, { result });
       } catch (err) {
         console.error('gRPC Error:', err);
@@ -90,6 +166,9 @@ function createGrpcServer(handlers: any): Server {
         );
       }
     },
+    createLiveModule: async (call, callback) => {},
+    runLiveModule: async (call, callback) => {},
+    removeLiveModule: async (call, callback) => {},
     runYukuCheck: async (call, callback) => {},
   } as MahjongRunnerV1.RunnerServiceServer);
   return server;

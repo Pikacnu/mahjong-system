@@ -8,3 +8,13 @@ export function isCodeValid(code: string) {
     return false;
   }
 }
+
+export function objectToBuffer(obj: any): Buffer {
+  const jsonString = JSON.stringify(obj);
+  return Buffer.from(jsonString, 'utf-8');
+}
+
+export function bufferToObject<T>(buffer: Buffer): T {
+  const jsonString = buffer.toString('utf-8');
+  return JSON.parse(jsonString) as T;
+}
