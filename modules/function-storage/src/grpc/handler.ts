@@ -2,6 +2,7 @@ import { Metadata, Server } from '@grpc/grpc-js';
 import { Status } from '@grpc/grpc-js/build/src/constants';
 import { MahjongCodeStorageV1, MahjongCommonV1 } from 'proto';
 import { ErrorCode } from 'proto/src/generated/common';
+import { decodeFromBytes, encodeToBytes } from 'utils';
 import { db } from '../utils/db';
 import {
   method,
@@ -187,31 +188,45 @@ export function createGrpcServer(): Server {
 
       callback(null, {
         isStateful: definition.isStateful,
-        defaultStore: Buffer.from(definition.defaultStore, 'utf-8'),
+        defaultStore: encodeToBytes(definition.defaultStore) as Buffer,
         dependencies: dependenciesData,
       });
     },
     getResourcesVersions: async (call, callback) => {
-      const { functionName } = call.request;
+      const { functionName, resourceType, resourceSource } = call.request;
       if (!functionName) {
         return callback({
           code: Status.INVALID_ARGUMENT,
           details: 'Missing functionName in request',
         });
       }
-      const methodInfo = await getMethodInfo(functionName);
+      const methodInfo = await getMethodInfo(
+        functionName,
+        resourceSource !== undefined
+          ? SourceTypeRPCMap[resourceSource]
+          : undefined,
+      );
       if (!methodInfo) {
         return callback({
           code: Status.NOT_FOUND,
           details: `No method found with name ${functionName}`,
         });
       }
+      const filters = [eq(versions.methodId, methodInfo.id)];
+      if (resourceType !== undefined) {
+        filters.push(
+          eq(versions.resourceType, ResourceTypeRPCMap[resourceType]),
+        );
+      }
+      if (resourceSource !== undefined) {
+        filters.push(eq(versions.sourceType, SourceTypeRPCMap[resourceSource]));
+      }
       const versionData = await db
         .select({
           version: versions.version,
         })
         .from(versions)
-        .where(eq(versions.methodId, methodInfo.id));
+        .where(and(...filters));
       if (!versionData || versionData.length === 0) {
         return callback({
           code: Status.NOT_FOUND,
@@ -243,7 +258,12 @@ export function createGrpcServer(): Server {
           hash: resource.hash,
         })
         .from(versions)
-        .where(eq(versions.methodId, methodData.id))
+        .where(
+          and(
+            eq(versions.methodId, methodData.id),
+            eq(versions.version, methodInfo.version),
+          ),
+        )
         .leftJoin(resource, eq(versions.resourceId, resource.id))
         .limit(1)
         .then((res) => res[0]);
@@ -404,18 +424,24 @@ export function createGrpcServer(): Server {
         });
       }
 
+      const normalizedDefaultStore = decodeFromBytes(defaultStore);
+      const defaultStoreText =
+        typeof normalizedDefaultStore === 'string'
+          ? normalizedDefaultStore
+          : JSON.stringify(normalizedDefaultStore ?? {});
+
       await db
         .insert(pluginDefinitions)
         .values({
           versionId: versionData.id,
           isStateful,
-          defaultStore: Buffer.from(defaultStore).toString('utf-8') || '{}',
+          defaultStore: defaultStoreText,
         })
         .onConflictDoUpdate({
           target: pluginDefinitions.versionId,
           set: {
             isStateful,
-            defaultStore: Buffer.from(defaultStore).toString('utf-8') || '{}',
+            defaultStore: defaultStoreText,
             updatedAt: new Date(),
           },
         })

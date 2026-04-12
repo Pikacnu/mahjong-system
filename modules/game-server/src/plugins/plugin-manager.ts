@@ -12,6 +12,8 @@ import {
   type PluginLiveRuntimeConfig,
   type MethodInfo,
   ResourceSource,
+  decodeFromBytes,
+  decodeUnknown,
   type RunnerCreateLiveModulePayload,
   type RunnerLiveModuleBinding,
 } from 'utils';
@@ -347,23 +349,6 @@ export class PluginManager {
   }
 
   private normalizeDefaultStore(defaultStore: unknown): unknown {
-    if (Buffer.isBuffer(defaultStore)) {
-      const text = defaultStore.toString('utf-8');
-      if (!text) return {};
-      try {
-        return JSON.parse(text);
-      } catch {
-        return text;
-      }
-    }
-    if (typeof defaultStore === 'string') {
-      if (!defaultStore) return {};
-      try {
-        return JSON.parse(defaultStore);
-      } catch {
-        return defaultStore;
-      }
-    }
-    return defaultStore;
+    return decodeUnknown(decodeFromBytes(defaultStore)) ?? {};
   }
 }

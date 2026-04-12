@@ -7,6 +7,7 @@ import { WorkerManager } from '../manager/normal_runner_manager';
 import type { RunTaskPayload, VMOptions } from '../utils/type';
 import type { CodeCacher } from '../utils/cacher';
 import { LiveModuleManager } from '../manager/live_code_manager';
+import { decodeFromBytes } from 'utils';
 
 const liveModuleManager = LiveModuleManager.getInstance();
 
@@ -40,14 +41,7 @@ export function createFunctionRunnerGRPCHandler({
       } as MahjongCodeStorageV1.GetPluginDefinitionRequest,
     );
 
-    let defaultStore: unknown = {};
-    try {
-      defaultStore = JSON.parse(
-        Buffer.from(response.defaultStore).toString('utf-8'),
-      );
-    } catch {
-      defaultStore = {};
-    }
+    const defaultStore = decodeFromBytes(response.defaultStore) ?? {};
 
     return {
       isStateful: response.isStateful,
@@ -204,11 +198,121 @@ export function createFunctionRunnerGRPCHandler({
         );
       }
     },
-    callLiveModuleFn: async (call, callback) => {},
-    removeLiveModule: async (call, callback) => {},
+    callLiveModuleFn: async (call, callback) => {
+      const { moduleId, functionName, payload } = call.request;
+      if (!moduleId || !functionName || !payload) {
+        return callback(
+          {
+            code: Status.INVALID_ARGUMENT,
+            details: 'Missing moduleId, functionName, or payload in request',
+          },
+          null,
+        );
+      }
+      try {
+        const result = await liveModuleManager.callLiveModuleFunction({
+          moduleId,
+          functionName,
+          functionArgs: {
+            this: payload?.this || null,
+            args: payload?.args || [],
+          },
+        });
+        callback(null, { result });
+      } catch (err) {
+        console.error('gRPC Error:', err);
+        callback(
+          {
+            code: Status.INTERNAL,
+            details: 'Failed to call live module function',
+          },
+          null,
+        );
+      }
+    },
+    removeLiveModule: async (call, callback) => {
+      const { moduleId } = call.request;
+      if (!moduleId) {
+        return callback(
+          {
+            code: Status.INVALID_ARGUMENT,
+            details: 'Missing moduleId in request',
+          },
+          null,
+        );
+      }
+      try {
+        await liveModuleManager.removeLiveModule(moduleId);
+        callback(null, {});
+      } catch (err) {
+        console.error('gRPC Error:', err);
+        callback(
+          {
+            code: Status.INTERNAL,
+            details: 'Failed to remove live module',
+          },
+          null,
+        );
+      }
+    },
+    setLiveModuleValue: async (call, callback) => {
+      const { moduleId, key, value } = call.request;
+      if (!moduleId || !key) {
+        return callback(
+          {
+            code: Status.INVALID_ARGUMENT,
+            details: 'Missing moduleId or key in request',
+          },
+          null,
+        );
+      }
+      try {
+        await liveModuleManager.setLiveModuleValue({
+          moduleId,
+          name: key,
+          value,
+        });
+        callback(null, {});
+      } catch (err) {
+        console.error('gRPC Error:', err);
+        callback(
+          {
+            code: Status.INTERNAL,
+            details: 'Failed to set live module value',
+          },
+          null,
+        );
+      }
+    },
+    getLiveModuleValue: async (call, callback) => {
+      const { moduleId, key } = call.request;
+      if (!moduleId || !key) {
+        return callback(
+          {
+            code: Status.INVALID_ARGUMENT,
+            details: 'Missing moduleId or key in request',
+          },
+          null,
+        );
+      }
+      try {
+        const value = await liveModuleManager.getLiveModuleValue({
+          moduleId,
+          name: key,
+        });
+        callback(null, { value });
+      } catch (err) {
+        console.error('gRPC Error:', err);
+        callback(
+          {
+            code: Status.INTERNAL,
+            details: 'Failed to get live module value',
+          },
+          null,
+        );
+      }
+    },
     runYukuCheck: async (call, callback) => {},
-    setLiveModuleValue: async (call, callback) => {},
-    getLiveModuleValue: async (call, callback) => {},
   } as MahjongRunnerV1.RunnerServiceServer);
   return server;
 }

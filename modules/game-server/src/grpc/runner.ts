@@ -4,24 +4,8 @@ import {
   createGrpcClient,
   unaryCall,
 } from 'proto';
-import { ResourceSource } from 'utils';
+import { ResourceSource, decodeFromBytes, encodeToBytes } from 'utils';
 import type { RunnerGateway, StorageGateway } from '../plugins/plugin-manager';
-
-function encodeUnknown(value: unknown): Buffer {
-  if (Buffer.isBuffer(value)) return value;
-  return Buffer.from(JSON.stringify(value ?? null), 'utf-8');
-}
-
-function decodeUnknown(value: Buffer): unknown {
-  if (!value || value.length === 0) return null;
-  const text = value.toString('utf-8');
-  if (!text) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
 
 function toStorageResourceSource(
   source?: ResourceSource,
@@ -54,11 +38,11 @@ export function createRunnerGateway(address: string): RunnerGateway {
         moduleId: payload.moduleId,
         functionName: payload.functionName,
         payload: {
-          this: encodeUnknown(payload.payload.this),
-          args: payload.payload.args.map((arg) => encodeUnknown(arg)),
+          this: encodeToBytes(payload.payload.this) as Buffer,
+          args: payload.payload.args.map((arg) => encodeToBytes(arg) as Buffer),
         },
       });
-      return decodeUnknown(response.result);
+      return decodeFromBytes(response.result);
     },
 
     async removeLiveModule(payload) {
@@ -71,7 +55,7 @@ export function createRunnerGateway(address: string): RunnerGateway {
       await unaryCall(client.setLiveModuleValue.bind(client), {
         moduleId: payload.moduleId,
         key: payload.key,
-        value: encodeUnknown(payload.value),
+        value: encodeToBytes(payload.value) as Buffer,
       });
     },
   };
@@ -95,7 +79,7 @@ export function createStorageGateway(address: string): StorageGateway {
 
       return {
         isStateful: response.isStateful,
-        defaultStore: decodeUnknown(response.defaultStore),
+        defaultStore: decodeFromBytes(response.defaultStore),
         dependencies: response.dependencies,
       };
     },
