@@ -57,6 +57,7 @@ message LiveModuleRunRequest {
     repeated bytes args = 2;
   }
   Payload payload = 2;
+  string function_name = 3; // Optional: specify a function within the module to run, if applicable.
 }
 
 // RemoveLiveModuleRequest contains the information needed to remove a live module,
