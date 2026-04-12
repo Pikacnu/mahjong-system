@@ -110,6 +110,19 @@ export interface GetMethodInfoResponse {
   dependencies: MethodInfo[];
 }
 
+/** GetPluginDefinitionRequest retrieves plugin runtime definition by method info. */
+export interface GetPluginDefinitionRequest {
+  methodInfo?: MethodInfo | undefined;
+  resourceSource?: ResourceSource | undefined;
+}
+
+/** GetPluginDefinitionResponse returns runtime-related plugin definition. */
+export interface GetPluginDefinitionResponse {
+  isStateful: boolean;
+  defaultStore: Buffer;
+  dependencies: MethodInfo[];
+}
+
 /** GetCodeVersionRequest retrieves all available versions for a given function name. */
 export interface GetCodeVersionRequest {
   functionName: string;
@@ -146,6 +159,14 @@ export interface StoreResourcesRequest {
   resourceType: ResourceType;
   sourceType: ResourceSource;
   dependencies: string[];
+}
+
+/** StorePluginDefinitionRequest stores plugin runtime definition. */
+export interface StorePluginDefinitionRequest {
+  methodInfo?: MethodInfo | undefined;
+  isStateful: boolean;
+  defaultStore: Buffer;
+  sourceType: ResourceSource;
 }
 
 function createBaseMethodInfo(): MethodInfo {
@@ -473,6 +494,194 @@ export const GetMethodInfoResponse: MessageFns<GetMethodInfoResponse> = {
   },
   fromPartial<I extends Exact<DeepPartial<GetMethodInfoResponse>, I>>(object: I): GetMethodInfoResponse {
     const message = createBaseGetMethodInfoResponse();
+    message.dependencies = object.dependencies?.map((e) => MethodInfo.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseGetPluginDefinitionRequest(): GetPluginDefinitionRequest {
+  return { methodInfo: undefined, resourceSource: undefined };
+}
+
+export const GetPluginDefinitionRequest: MessageFns<GetPluginDefinitionRequest> = {
+  encode(message: GetPluginDefinitionRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.methodInfo !== undefined) {
+      MethodInfo.encode(message.methodInfo, writer.uint32(10).fork()).join();
+    }
+    if (message.resourceSource !== undefined) {
+      writer.uint32(16).int32(message.resourceSource);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetPluginDefinitionRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetPluginDefinitionRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.methodInfo = MethodInfo.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.resourceSource = reader.int32() as any;
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GetPluginDefinitionRequest {
+    return {
+      methodInfo: isSet(object.methodInfo)
+        ? MethodInfo.fromJSON(object.methodInfo)
+        : isSet(object.method_info)
+        ? MethodInfo.fromJSON(object.method_info)
+        : undefined,
+      resourceSource: isSet(object.resourceSource)
+        ? resourceSourceFromJSON(object.resourceSource)
+        : isSet(object.resource_source)
+        ? resourceSourceFromJSON(object.resource_source)
+        : undefined,
+    };
+  },
+
+  toJSON(message: GetPluginDefinitionRequest): unknown {
+    const obj: any = {};
+    if (message.methodInfo !== undefined) {
+      obj.methodInfo = MethodInfo.toJSON(message.methodInfo);
+    }
+    if (message.resourceSource !== undefined) {
+      obj.resourceSource = resourceSourceToJSON(message.resourceSource);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetPluginDefinitionRequest>, I>>(base?: I): GetPluginDefinitionRequest {
+    return GetPluginDefinitionRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetPluginDefinitionRequest>, I>>(object: I): GetPluginDefinitionRequest {
+    const message = createBaseGetPluginDefinitionRequest();
+    message.methodInfo = (object.methodInfo !== undefined && object.methodInfo !== null)
+      ? MethodInfo.fromPartial(object.methodInfo)
+      : undefined;
+    message.resourceSource = object.resourceSource ?? undefined;
+    return message;
+  },
+};
+
+function createBaseGetPluginDefinitionResponse(): GetPluginDefinitionResponse {
+  return { isStateful: false, defaultStore: Buffer.alloc(0), dependencies: [] };
+}
+
+export const GetPluginDefinitionResponse: MessageFns<GetPluginDefinitionResponse> = {
+  encode(message: GetPluginDefinitionResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.isStateful !== false) {
+      writer.uint32(8).bool(message.isStateful);
+    }
+    if (message.defaultStore.length !== 0) {
+      writer.uint32(18).bytes(message.defaultStore);
+    }
+    for (const v of message.dependencies) {
+      MethodInfo.encode(v!, writer.uint32(26).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetPluginDefinitionResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetPluginDefinitionResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.isStateful = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.defaultStore = Buffer.from(reader.bytes());
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.dependencies.push(MethodInfo.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GetPluginDefinitionResponse {
+    return {
+      isStateful: isSet(object.isStateful)
+        ? globalThis.Boolean(object.isStateful)
+        : isSet(object.is_stateful)
+        ? globalThis.Boolean(object.is_stateful)
+        : false,
+      defaultStore: isSet(object.defaultStore)
+        ? Buffer.from(bytesFromBase64(object.defaultStore))
+        : isSet(object.default_store)
+        ? Buffer.from(bytesFromBase64(object.default_store))
+        : Buffer.alloc(0),
+      dependencies: globalThis.Array.isArray(object?.dependencies)
+        ? object.dependencies.map((e: any) => MethodInfo.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: GetPluginDefinitionResponse): unknown {
+    const obj: any = {};
+    if (message.isStateful !== false) {
+      obj.isStateful = message.isStateful;
+    }
+    if (message.defaultStore.length !== 0) {
+      obj.defaultStore = base64FromBytes(message.defaultStore);
+    }
+    if (message.dependencies?.length) {
+      obj.dependencies = message.dependencies.map((e) => MethodInfo.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetPluginDefinitionResponse>, I>>(base?: I): GetPluginDefinitionResponse {
+    return GetPluginDefinitionResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetPluginDefinitionResponse>, I>>(object: I): GetPluginDefinitionResponse {
+    const message = createBaseGetPluginDefinitionResponse();
+    message.isStateful = object.isStateful ?? false;
+    message.defaultStore = object.defaultStore ?? Buffer.alloc(0);
     message.dependencies = object.dependencies?.map((e) => MethodInfo.fromPartial(e)) || [];
     return message;
   },
@@ -936,6 +1145,132 @@ export const StoreResourcesRequest: MessageFns<StoreResourcesRequest> = {
   },
 };
 
+function createBaseStorePluginDefinitionRequest(): StorePluginDefinitionRequest {
+  return { methodInfo: undefined, isStateful: false, defaultStore: Buffer.alloc(0), sourceType: 0 };
+}
+
+export const StorePluginDefinitionRequest: MessageFns<StorePluginDefinitionRequest> = {
+  encode(message: StorePluginDefinitionRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.methodInfo !== undefined) {
+      MethodInfo.encode(message.methodInfo, writer.uint32(10).fork()).join();
+    }
+    if (message.isStateful !== false) {
+      writer.uint32(16).bool(message.isStateful);
+    }
+    if (message.defaultStore.length !== 0) {
+      writer.uint32(26).bytes(message.defaultStore);
+    }
+    if (message.sourceType !== 0) {
+      writer.uint32(32).int32(message.sourceType);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StorePluginDefinitionRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseStorePluginDefinitionRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.methodInfo = MethodInfo.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.isStateful = reader.bool();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.defaultStore = Buffer.from(reader.bytes());
+          continue;
+        }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.sourceType = reader.int32() as any;
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): StorePluginDefinitionRequest {
+    return {
+      methodInfo: isSet(object.methodInfo)
+        ? MethodInfo.fromJSON(object.methodInfo)
+        : isSet(object.method_info)
+        ? MethodInfo.fromJSON(object.method_info)
+        : undefined,
+      isStateful: isSet(object.isStateful)
+        ? globalThis.Boolean(object.isStateful)
+        : isSet(object.is_stateful)
+        ? globalThis.Boolean(object.is_stateful)
+        : false,
+      defaultStore: isSet(object.defaultStore)
+        ? Buffer.from(bytesFromBase64(object.defaultStore))
+        : isSet(object.default_store)
+        ? Buffer.from(bytesFromBase64(object.default_store))
+        : Buffer.alloc(0),
+      sourceType: isSet(object.sourceType)
+        ? resourceSourceFromJSON(object.sourceType)
+        : isSet(object.source_type)
+        ? resourceSourceFromJSON(object.source_type)
+        : 0,
+    };
+  },
+
+  toJSON(message: StorePluginDefinitionRequest): unknown {
+    const obj: any = {};
+    if (message.methodInfo !== undefined) {
+      obj.methodInfo = MethodInfo.toJSON(message.methodInfo);
+    }
+    if (message.isStateful !== false) {
+      obj.isStateful = message.isStateful;
+    }
+    if (message.defaultStore.length !== 0) {
+      obj.defaultStore = base64FromBytes(message.defaultStore);
+    }
+    if (message.sourceType !== 0) {
+      obj.sourceType = resourceSourceToJSON(message.sourceType);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<StorePluginDefinitionRequest>, I>>(base?: I): StorePluginDefinitionRequest {
+    return StorePluginDefinitionRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<StorePluginDefinitionRequest>, I>>(object: I): StorePluginDefinitionRequest {
+    const message = createBaseStorePluginDefinitionRequest();
+    message.methodInfo = (object.methodInfo !== undefined && object.methodInfo !== null)
+      ? MethodInfo.fromPartial(object.methodInfo)
+      : undefined;
+    message.isStateful = object.isStateful ?? false;
+    message.defaultStore = object.defaultStore ?? Buffer.alloc(0);
+    message.sourceType = object.sourceType ?? 0;
+    return message;
+  },
+};
+
 /**
  * StorageService provides RPC endpoints for storing and retrieving Mahjong
  * function code and resources (builtin modules, etc.).
@@ -955,6 +1290,18 @@ export const StorageServiceService = {
     responseSerialize: (value: GetMethodInfoResponse): Buffer =>
       Buffer.from(GetMethodInfoResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): GetMethodInfoResponse => GetMethodInfoResponse.decode(value),
+  },
+  /** GetPluginDefinition retrieves stateful/default store definition for a plugin. */
+  getPluginDefinition: {
+    path: "/mahjong.code_storage.v1.StorageService/GetPluginDefinition" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: GetPluginDefinitionRequest): Buffer =>
+      Buffer.from(GetPluginDefinitionRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): GetPluginDefinitionRequest => GetPluginDefinitionRequest.decode(value),
+    responseSerialize: (value: GetPluginDefinitionResponse): Buffer =>
+      Buffer.from(GetPluginDefinitionResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): GetPluginDefinitionResponse => GetPluginDefinitionResponse.decode(value),
   },
   /** GetResourcesVersions retrieves all available versions for a given function name. */
   getResourcesVersions: {
@@ -994,6 +1341,17 @@ export const StorageServiceService = {
     responseSerialize: (value: Empty): Buffer => Buffer.from(Empty.encode(value).finish()),
     responseDeserialize: (value: Buffer): Empty => Empty.decode(value),
   },
+  /** StorePluginDefinition stores plugin runtime definition for a method version. */
+  storePluginDefinition: {
+    path: "/mahjong.code_storage.v1.StorageService/StorePluginDefinition" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: StorePluginDefinitionRequest): Buffer =>
+      Buffer.from(StorePluginDefinitionRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): StorePluginDefinitionRequest => StorePluginDefinitionRequest.decode(value),
+    responseSerialize: (value: Empty): Buffer => Buffer.from(Empty.encode(value).finish()),
+    responseDeserialize: (value: Buffer): Empty => Empty.decode(value),
+  },
 } as const;
 
 export interface StorageServiceServer extends UntypedServiceImplementation {
@@ -1002,6 +1360,8 @@ export interface StorageServiceServer extends UntypedServiceImplementation {
    * To get method's dependencies
    */
   getMethodInfo: handleUnaryCall<GetMethodInfoRequest, GetMethodInfoResponse>;
+  /** GetPluginDefinition retrieves stateful/default store definition for a plugin. */
+  getPluginDefinition: handleUnaryCall<GetPluginDefinitionRequest, GetPluginDefinitionResponse>;
   /** GetResourcesVersions retrieves all available versions for a given function name. */
   getResourcesVersions: handleUnaryCall<GetCodeVersionRequest, GetCodeVersionResponse>;
   /** GetResourcesData retrieves the code for a given function name and version. */
@@ -1011,6 +1371,8 @@ export interface StorageServiceServer extends UntypedServiceImplementation {
    * Note: This method can be used for both creating new code and updating existing code.
    */
   storeResources: handleUnaryCall<StoreResourcesRequest, Empty>;
+  /** StorePluginDefinition stores plugin runtime definition for a method version. */
+  storePluginDefinition: handleUnaryCall<StorePluginDefinitionRequest, Empty>;
 }
 
 export interface StorageServiceClient extends Client {
@@ -1033,6 +1395,22 @@ export interface StorageServiceClient extends Client {
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: GetMethodInfoResponse) => void,
   ): ClientUnaryCall;
+  /** GetPluginDefinition retrieves stateful/default store definition for a plugin. */
+  getPluginDefinition(
+    request: GetPluginDefinitionRequest,
+    callback: (error: ServiceError | null, response: GetPluginDefinitionResponse) => void,
+  ): ClientUnaryCall;
+  getPluginDefinition(
+    request: GetPluginDefinitionRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: GetPluginDefinitionResponse) => void,
+  ): ClientUnaryCall;
+  getPluginDefinition(
+    request: GetPluginDefinitionRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: GetPluginDefinitionResponse) => void,
+  ): ClientUnaryCall;
   /** GetResourcesVersions retrieves all available versions for a given function name. */
   getResourcesVersions(
     request: GetCodeVersionRequest,
@@ -1080,6 +1458,22 @@ export interface StorageServiceClient extends Client {
   ): ClientUnaryCall;
   storeResources(
     request: StoreResourcesRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: Empty) => void,
+  ): ClientUnaryCall;
+  /** StorePluginDefinition stores plugin runtime definition for a method version. */
+  storePluginDefinition(
+    request: StorePluginDefinitionRequest,
+    callback: (error: ServiceError | null, response: Empty) => void,
+  ): ClientUnaryCall;
+  storePluginDefinition(
+    request: StorePluginDefinitionRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: Empty) => void,
+  ): ClientUnaryCall;
+  storePluginDefinition(
+    request: StorePluginDefinitionRequest,
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: Empty) => void,

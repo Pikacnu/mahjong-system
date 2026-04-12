@@ -9,6 +9,7 @@ import {
   versions,
   builtinType,
   sourceType,
+  pluginDefinitions,
 } from '../../db/schema';
 import { and, eq } from 'drizzle-orm';
 import { dependencies } from './../../db/schema';
@@ -27,6 +28,48 @@ async function getMethodInfo(
     )
     .limit(1)
     .then((res) => res[0]);
+}
+
+async function getVersionInfoByMethod(
+  methodId: number,
+  version: number,
+  source_type?: (typeof sourceType.enumValues)[number],
+) {
+  return await db
+    .select({
+      id: versions.id,
+      methodId: versions.methodId,
+      version: versions.version,
+      sourceType: versions.sourceType,
+    })
+    .from(versions)
+    .where(
+      source_type
+        ? and(
+            eq(versions.methodId, methodId),
+            eq(versions.version, version),
+            eq(versions.sourceType, source_type),
+          )
+        : and(eq(versions.methodId, methodId), eq(versions.version, version)),
+    )
+    .limit(1)
+    .then((res) => res[0]);
+}
+
+async function getDependenciesByVersionId(versionId: number) {
+  return await db
+    .select({ name: method.name, version: versions.version })
+    .from(dependencies)
+    .where(eq(dependencies.sourceVersionId, versionId))
+    .leftJoin(versions, eq(versions.id, dependencies.dependencyVersionId))
+    .leftJoin(method, eq(method.id, versions.methodId))
+    .then(
+      (rows) =>
+        rows.filter((row) => row.name && row.version) as {
+          name: string;
+          version: number;
+        }[],
+    );
 }
 
 const ResourceTypeRPCMap: {
@@ -84,17 +127,67 @@ export function createGrpcServer(): Server {
           details: `No version ${methodInfo.version} found for method ${methodInfo.name}`,
         });
       }
-      const dependenciesData = (
-        await db
-          .select({ name: method.name, version: versions.version })
-          .from(dependencies)
-          .where(eq(dependencies.dependencyVersionId, versionId))
-          .leftJoin(method, eq(method.id, methodId))
-      ).filter((data) => !!data.name && !!data.version) as {
-        name: string;
-        version: number;
-      }[];
+      const dependenciesData = await getDependenciesByVersionId(versionId);
       callback(null, {
+        dependencies: dependenciesData,
+      });
+    },
+    getPluginDefinition: async (call, callback) => {
+      const { methodInfo, resourceSource } = call.request;
+      if (!methodInfo) {
+        return callback({
+          code: Status.INVALID_ARGUMENT,
+          details: 'Missing methodInfo in request',
+        });
+      }
+
+      const methodData = await getMethodInfo(
+        methodInfo.name,
+        resourceSource ? SourceTypeRPCMap[resourceSource] : undefined,
+      );
+
+      if (!methodData) {
+        return callback({
+          code: Status.NOT_FOUND,
+          details: `No method found with name ${methodInfo.name}`,
+        });
+      }
+
+      const versionData = await getVersionInfoByMethod(
+        methodData.id,
+        methodInfo.version,
+        resourceSource ? SourceTypeRPCMap[resourceSource] : undefined,
+      );
+
+      if (!versionData) {
+        return callback({
+          code: Status.NOT_FOUND,
+          details: `No version ${methodInfo.version} found for method ${methodInfo.name}`,
+        });
+      }
+
+      const definition = await db
+        .select({
+          isStateful: pluginDefinitions.isStateful,
+          defaultStore: pluginDefinitions.defaultStore,
+        })
+        .from(pluginDefinitions)
+        .where(eq(pluginDefinitions.versionId, versionData.id))
+        .limit(1)
+        .then((res) => res[0]);
+
+      if (!definition) {
+        return callback({
+          code: Status.NOT_FOUND,
+          details: `No plugin definition found for ${methodInfo.name}@${methodInfo.version}`,
+        });
+      }
+
+      const dependenciesData = await getDependenciesByVersionId(versionData.id);
+
+      callback(null, {
+        isStateful: definition.isStateful,
+        defaultStore: Buffer.from(definition.defaultStore, 'utf-8'),
         dependencies: dependenciesData,
       });
     },
@@ -266,6 +359,67 @@ export function createGrpcServer(): Server {
 
           callback(null, {});
         })
+        .catch((error) => {
+          callback(
+            {
+              code: Status.INTERNAL,
+              details: error instanceof Error ? error.message : String(error),
+            },
+            null,
+          );
+        });
+    },
+    storePluginDefinition: async (call, callback) => {
+      const { methodInfo, isStateful, defaultStore, sourceType } = call.request;
+
+      if (!methodInfo) {
+        return callback({
+          code: Status.INVALID_ARGUMENT,
+          details: 'Missing methodInfo in request',
+        });
+      }
+
+      const methodData = await getMethodInfo(
+        methodInfo.name,
+        sourceType !== undefined ? SourceTypeRPCMap[sourceType] : undefined,
+      );
+
+      if (!methodData) {
+        return callback({
+          code: Status.NOT_FOUND,
+          details: `No method found with name ${methodInfo.name}`,
+        });
+      }
+
+      const versionData = await getVersionInfoByMethod(
+        methodData.id,
+        methodInfo.version,
+        sourceType !== undefined ? SourceTypeRPCMap[sourceType] : undefined,
+      );
+
+      if (!versionData) {
+        return callback({
+          code: Status.NOT_FOUND,
+          details: `No version ${methodInfo.version} found for method ${methodInfo.name}`,
+        });
+      }
+
+      await db
+        .insert(pluginDefinitions)
+        .values({
+          versionId: versionData.id,
+          isStateful,
+          defaultStore: Buffer.from(defaultStore).toString('utf-8') || '{}',
+        })
+        .onConflictDoUpdate({
+          target: pluginDefinitions.versionId,
+          set: {
+            isStateful,
+            defaultStore: Buffer.from(defaultStore).toString('utf-8') || '{}',
+            updatedAt: new Date(),
+          },
+        })
+        .then(() => callback(null, {}))
         .catch((error) => {
           callback(
             {

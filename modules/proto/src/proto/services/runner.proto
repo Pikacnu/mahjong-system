@@ -29,10 +29,10 @@ message FunctionResponse {
 }
 
 // CreateLiveModuleRequest contains the information needed to create a live module,
-// including its name, version, and code.
+// including its name and version. The runner fetches code from storage.
 message CreateLiveModuleRequest {
   LiveModuleManifest manifest = 1;
-  string             code     = 2;
+  optional bool is_stateful = 2;
 }
 
 // LiveModuleManifest represents the metadata for a live module,
@@ -66,6 +66,28 @@ message RemoveLiveModuleRequest {
   string module_id = 1;
 }
 
+// SetLiveModuleValueRequest contains the information needed to set a value in a live module,
+// including the module ID, key, and value.
+message SetLiveModuleValueRequest {
+  string module_id = 1;
+  string key       = 2;
+  bytes  value     = 3;
+}
+
+// GetLiveModuleValueRequest contains the information needed to get a value from a live module,
+// including the module ID and key.
+message GetLiveModuleValueRequest {
+  string module_id = 1;
+  string key       = 2;
+}
+
+// GetLiveModuleValueResponse contains the value retrieved from a live module,
+// or an error code if retrieval failed.
+message GetLiveModuleValueResponse {
+  bytes value = 1;
+}
+
+
 // RunnerService provides RPC endpoints for executing Mahjong functions.
 service RunnerService {
   // RunFunction executes a function with name / version / args
@@ -76,8 +98,12 @@ service RunnerService {
   rpc RunYukuCheck(FunctionRequest) returns (FunctionResponse);
   // CreateLiveModule creates a live module with the given name, version, and code.
   rpc CreateLiveModule(CreateLiveModuleRequest) returns (CreateLiveModuleResponse);
-  // RunLiveModule executes a live module with the given module ID and arguments.
-  rpc RunLiveModule(LiveModuleRunRequest) returns (FunctionResponse);
+  // CallLiveModuleFn executes a live module with the given module ID and arguments.
+  rpc CallLiveModuleFn(LiveModuleRunRequest) returns (FunctionResponse);
   // RemoveLiveModule removes a live module with the given module ID.
   rpc RemoveLiveModule(RemoveLiveModuleRequest) returns (google.protobuf.Empty);
+  // SetLiveModuleValue sets a value in a live module with the given module ID, key, and value.
+  rpc SetLiveModuleValue(SetLiveModuleValueRequest) returns (google.protobuf.Empty);
+  // GetLiveModuleValue gets a value from a live module with the given module ID and key.
+  rpc GetLiveModuleValue(GetLiveModuleValueRequest) returns (GetLiveModuleValueResponse);
 }

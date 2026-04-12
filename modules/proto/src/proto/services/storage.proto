@@ -37,6 +37,19 @@ message GetMethodInfoResponse {
   repeated MethodInfo dependencies = 1;
 }
 
+// GetPluginDefinitionRequest retrieves plugin runtime definition by method info.
+message GetPluginDefinitionRequest {
+  MethodInfo method_info = 1;
+  optional ResourceSource resource_source = 2;
+}
+
+// GetPluginDefinitionResponse returns runtime-related plugin definition.
+message GetPluginDefinitionResponse {
+  bool is_stateful = 1;
+  bytes default_store = 2;
+  repeated MethodInfo dependencies = 3;
+}
+
 // GetCodeVersionRequest retrieves all available versions for a given function name.
 message GetCodeVersionRequest {
   string function_name = 1;
@@ -71,6 +84,14 @@ message StoreResourcesRequest {
   repeated string dependencies = 5;
 }
 
+// StorePluginDefinitionRequest stores plugin runtime definition.
+message StorePluginDefinitionRequest {
+  MethodInfo method_info = 1;
+  bool is_stateful = 2;
+  bytes default_store = 3;
+  ResourceSource source_type = 4;
+}
+
 // StoreResourcesResponse returns an error code indicating the success or failure of 
 // the store operation.
 
@@ -80,6 +101,8 @@ service StorageService {
   // GetMethodInfo retrieves the metadata for a given function name and version.
   // To get method's dependencies
   rpc GetMethodInfo(GetMethodInfoRequest) returns (GetMethodInfoResponse);
+  // GetPluginDefinition retrieves stateful/default store definition for a plugin.
+  rpc GetPluginDefinition(GetPluginDefinitionRequest) returns (GetPluginDefinitionResponse);
   // GetResourcesVersions retrieves all available versions for a given function name.
   rpc GetResourcesVersions(GetCodeVersionRequest) returns (GetCodeVersionResponse);
   // GetResourcesData retrieves the code for a given function name and version.
@@ -87,4 +110,6 @@ service StorageService {
   // StoreResources stores the code for a given function name and version.
   // Note: This method can be used for both creating new code and updating existing code.
   rpc StoreResources(StoreResourcesRequest) returns (google.protobuf.Empty);
+  // StorePluginDefinition stores plugin runtime definition for a method version.
+  rpc StorePluginDefinition(StorePluginDefinitionRequest) returns (google.protobuf.Empty);
 }

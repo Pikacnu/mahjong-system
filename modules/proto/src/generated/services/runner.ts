@@ -55,11 +55,11 @@ export interface FunctionResponse {
 
 /**
  * CreateLiveModuleRequest contains the information needed to create a live module,
- * including its name, version, and code.
+ * including its name and version. The runner fetches code from storage.
  */
 export interface CreateLiveModuleRequest {
   manifest?: LiveModuleManifest | undefined;
-  code: string;
+  isStateful?: boolean | undefined;
 }
 
 /**
@@ -85,7 +85,11 @@ export interface CreateLiveModuleResponse {
  */
 export interface LiveModuleRunRequest {
   moduleId: string;
-  payload?: LiveModuleRunRequest_Payload | undefined;
+  payload?:
+    | LiveModuleRunRequest_Payload
+    | undefined;
+  /** Optional: specify a function within the module to run, if applicable. */
+  functionName: string;
 }
 
 export interface LiveModuleRunRequest_Payload {
@@ -99,6 +103,33 @@ export interface LiveModuleRunRequest_Payload {
  */
 export interface RemoveLiveModuleRequest {
   moduleId: string;
+}
+
+/**
+ * SetLiveModuleValueRequest contains the information needed to set a value in a live module,
+ * including the module ID, key, and value.
+ */
+export interface SetLiveModuleValueRequest {
+  moduleId: string;
+  key: string;
+  value: Buffer;
+}
+
+/**
+ * GetLiveModuleValueRequest contains the information needed to get a value from a live module,
+ * including the module ID and key.
+ */
+export interface GetLiveModuleValueRequest {
+  moduleId: string;
+  key: string;
+}
+
+/**
+ * GetLiveModuleValueResponse contains the value retrieved from a live module,
+ * or an error code if retrieval failed.
+ */
+export interface GetLiveModuleValueResponse {
+  value: Buffer;
 }
 
 function createBaseFunctionInfo(): FunctionInfo {
@@ -396,7 +427,7 @@ export const FunctionResponse: MessageFns<FunctionResponse> = {
 };
 
 function createBaseCreateLiveModuleRequest(): CreateLiveModuleRequest {
-  return { manifest: undefined, code: "" };
+  return { manifest: undefined, isStateful: undefined };
 }
 
 export const CreateLiveModuleRequest: MessageFns<CreateLiveModuleRequest> = {
@@ -404,8 +435,8 @@ export const CreateLiveModuleRequest: MessageFns<CreateLiveModuleRequest> = {
     if (message.manifest !== undefined) {
       LiveModuleManifest.encode(message.manifest, writer.uint32(10).fork()).join();
     }
-    if (message.code !== "") {
-      writer.uint32(18).string(message.code);
+    if (message.isStateful !== undefined) {
+      writer.uint32(16).bool(message.isStateful);
     }
     return writer;
   },
@@ -426,11 +457,11 @@ export const CreateLiveModuleRequest: MessageFns<CreateLiveModuleRequest> = {
           continue;
         }
         case 2: {
-          if (tag !== 18) {
+          if (tag !== 16) {
             break;
           }
 
-          message.code = reader.string();
+          message.isStateful = reader.bool();
           continue;
         }
       }
@@ -445,7 +476,11 @@ export const CreateLiveModuleRequest: MessageFns<CreateLiveModuleRequest> = {
   fromJSON(object: any): CreateLiveModuleRequest {
     return {
       manifest: isSet(object.manifest) ? LiveModuleManifest.fromJSON(object.manifest) : undefined,
-      code: isSet(object.code) ? globalThis.String(object.code) : "",
+      isStateful: isSet(object.isStateful)
+        ? globalThis.Boolean(object.isStateful)
+        : isSet(object.is_stateful)
+        ? globalThis.Boolean(object.is_stateful)
+        : undefined,
     };
   },
 
@@ -454,8 +489,8 @@ export const CreateLiveModuleRequest: MessageFns<CreateLiveModuleRequest> = {
     if (message.manifest !== undefined) {
       obj.manifest = LiveModuleManifest.toJSON(message.manifest);
     }
-    if (message.code !== "") {
-      obj.code = message.code;
+    if (message.isStateful !== undefined) {
+      obj.isStateful = message.isStateful;
     }
     return obj;
   },
@@ -468,7 +503,7 @@ export const CreateLiveModuleRequest: MessageFns<CreateLiveModuleRequest> = {
     message.manifest = (object.manifest !== undefined && object.manifest !== null)
       ? LiveModuleManifest.fromPartial(object.manifest)
       : undefined;
-    message.code = object.code ?? "";
+    message.isStateful = object.isStateful ?? undefined;
     return message;
   },
 };
@@ -614,7 +649,7 @@ export const CreateLiveModuleResponse: MessageFns<CreateLiveModuleResponse> = {
 };
 
 function createBaseLiveModuleRunRequest(): LiveModuleRunRequest {
-  return { moduleId: "", payload: undefined };
+  return { moduleId: "", payload: undefined, functionName: "" };
 }
 
 export const LiveModuleRunRequest: MessageFns<LiveModuleRunRequest> = {
@@ -624,6 +659,9 @@ export const LiveModuleRunRequest: MessageFns<LiveModuleRunRequest> = {
     }
     if (message.payload !== undefined) {
       LiveModuleRunRequest_Payload.encode(message.payload, writer.uint32(18).fork()).join();
+    }
+    if (message.functionName !== "") {
+      writer.uint32(26).string(message.functionName);
     }
     return writer;
   },
@@ -651,6 +689,14 @@ export const LiveModuleRunRequest: MessageFns<LiveModuleRunRequest> = {
           message.payload = LiveModuleRunRequest_Payload.decode(reader, reader.uint32());
           continue;
         }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.functionName = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -668,6 +714,11 @@ export const LiveModuleRunRequest: MessageFns<LiveModuleRunRequest> = {
         ? globalThis.String(object.module_id)
         : "",
       payload: isSet(object.payload) ? LiveModuleRunRequest_Payload.fromJSON(object.payload) : undefined,
+      functionName: isSet(object.functionName)
+        ? globalThis.String(object.functionName)
+        : isSet(object.function_name)
+        ? globalThis.String(object.function_name)
+        : "",
     };
   },
 
@@ -678,6 +729,9 @@ export const LiveModuleRunRequest: MessageFns<LiveModuleRunRequest> = {
     }
     if (message.payload !== undefined) {
       obj.payload = LiveModuleRunRequest_Payload.toJSON(message.payload);
+    }
+    if (message.functionName !== "") {
+      obj.functionName = message.functionName;
     }
     return obj;
   },
@@ -691,6 +745,7 @@ export const LiveModuleRunRequest: MessageFns<LiveModuleRunRequest> = {
     message.payload = (object.payload !== undefined && object.payload !== null)
       ? LiveModuleRunRequest_Payload.fromPartial(object.payload)
       : undefined;
+    message.functionName = object.functionName ?? "";
     return message;
   },
 };
@@ -835,6 +890,240 @@ export const RemoveLiveModuleRequest: MessageFns<RemoveLiveModuleRequest> = {
   },
 };
 
+function createBaseSetLiveModuleValueRequest(): SetLiveModuleValueRequest {
+  return { moduleId: "", key: "", value: Buffer.alloc(0) };
+}
+
+export const SetLiveModuleValueRequest: MessageFns<SetLiveModuleValueRequest> = {
+  encode(message: SetLiveModuleValueRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.moduleId !== "") {
+      writer.uint32(10).string(message.moduleId);
+    }
+    if (message.key !== "") {
+      writer.uint32(18).string(message.key);
+    }
+    if (message.value.length !== 0) {
+      writer.uint32(26).bytes(message.value);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetLiveModuleValueRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSetLiveModuleValueRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.moduleId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.key = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.value = Buffer.from(reader.bytes());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SetLiveModuleValueRequest {
+    return {
+      moduleId: isSet(object.moduleId)
+        ? globalThis.String(object.moduleId)
+        : isSet(object.module_id)
+        ? globalThis.String(object.module_id)
+        : "",
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      value: isSet(object.value) ? Buffer.from(bytesFromBase64(object.value)) : Buffer.alloc(0),
+    };
+  },
+
+  toJSON(message: SetLiveModuleValueRequest): unknown {
+    const obj: any = {};
+    if (message.moduleId !== "") {
+      obj.moduleId = message.moduleId;
+    }
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.value.length !== 0) {
+      obj.value = base64FromBytes(message.value);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetLiveModuleValueRequest>, I>>(base?: I): SetLiveModuleValueRequest {
+    return SetLiveModuleValueRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetLiveModuleValueRequest>, I>>(object: I): SetLiveModuleValueRequest {
+    const message = createBaseSetLiveModuleValueRequest();
+    message.moduleId = object.moduleId ?? "";
+    message.key = object.key ?? "";
+    message.value = object.value ?? Buffer.alloc(0);
+    return message;
+  },
+};
+
+function createBaseGetLiveModuleValueRequest(): GetLiveModuleValueRequest {
+  return { moduleId: "", key: "" };
+}
+
+export const GetLiveModuleValueRequest: MessageFns<GetLiveModuleValueRequest> = {
+  encode(message: GetLiveModuleValueRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.moduleId !== "") {
+      writer.uint32(10).string(message.moduleId);
+    }
+    if (message.key !== "") {
+      writer.uint32(18).string(message.key);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetLiveModuleValueRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetLiveModuleValueRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.moduleId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.key = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GetLiveModuleValueRequest {
+    return {
+      moduleId: isSet(object.moduleId)
+        ? globalThis.String(object.moduleId)
+        : isSet(object.module_id)
+        ? globalThis.String(object.module_id)
+        : "",
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+    };
+  },
+
+  toJSON(message: GetLiveModuleValueRequest): unknown {
+    const obj: any = {};
+    if (message.moduleId !== "") {
+      obj.moduleId = message.moduleId;
+    }
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetLiveModuleValueRequest>, I>>(base?: I): GetLiveModuleValueRequest {
+    return GetLiveModuleValueRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetLiveModuleValueRequest>, I>>(object: I): GetLiveModuleValueRequest {
+    const message = createBaseGetLiveModuleValueRequest();
+    message.moduleId = object.moduleId ?? "";
+    message.key = object.key ?? "";
+    return message;
+  },
+};
+
+function createBaseGetLiveModuleValueResponse(): GetLiveModuleValueResponse {
+  return { value: Buffer.alloc(0) };
+}
+
+export const GetLiveModuleValueResponse: MessageFns<GetLiveModuleValueResponse> = {
+  encode(message: GetLiveModuleValueResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.value.length !== 0) {
+      writer.uint32(10).bytes(message.value);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetLiveModuleValueResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetLiveModuleValueResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.value = Buffer.from(reader.bytes());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GetLiveModuleValueResponse {
+    return { value: isSet(object.value) ? Buffer.from(bytesFromBase64(object.value)) : Buffer.alloc(0) };
+  },
+
+  toJSON(message: GetLiveModuleValueResponse): unknown {
+    const obj: any = {};
+    if (message.value.length !== 0) {
+      obj.value = base64FromBytes(message.value);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetLiveModuleValueResponse>, I>>(base?: I): GetLiveModuleValueResponse {
+    return GetLiveModuleValueResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetLiveModuleValueResponse>, I>>(object: I): GetLiveModuleValueResponse {
+    const message = createBaseGetLiveModuleValueResponse();
+    message.value = object.value ?? Buffer.alloc(0);
+    return message;
+  },
+};
+
 /** RunnerService provides RPC endpoints for executing Mahjong functions. */
 export type RunnerServiceService = typeof RunnerServiceService;
 export const RunnerServiceService = {
@@ -876,9 +1165,9 @@ export const RunnerServiceService = {
       Buffer.from(CreateLiveModuleResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): CreateLiveModuleResponse => CreateLiveModuleResponse.decode(value),
   },
-  /** RunLiveModule executes a live module with the given module ID and arguments. */
-  runLiveModule: {
-    path: "/mahjong.runner.v1.RunnerService/RunLiveModule" as const,
+  /** CallLiveModuleFn executes a live module with the given module ID and arguments. */
+  callLiveModuleFn: {
+    path: "/mahjong.runner.v1.RunnerService/CallLiveModuleFn" as const,
     requestStream: false as const,
     responseStream: false as const,
     requestSerialize: (value: LiveModuleRunRequest): Buffer => Buffer.from(LiveModuleRunRequest.encode(value).finish()),
@@ -897,6 +1186,29 @@ export const RunnerServiceService = {
     responseSerialize: (value: Empty): Buffer => Buffer.from(Empty.encode(value).finish()),
     responseDeserialize: (value: Buffer): Empty => Empty.decode(value),
   },
+  /** SetLiveModuleValue sets a value in a live module with the given module ID, key, and value. */
+  setLiveModuleValue: {
+    path: "/mahjong.runner.v1.RunnerService/SetLiveModuleValue" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SetLiveModuleValueRequest): Buffer =>
+      Buffer.from(SetLiveModuleValueRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SetLiveModuleValueRequest => SetLiveModuleValueRequest.decode(value),
+    responseSerialize: (value: Empty): Buffer => Buffer.from(Empty.encode(value).finish()),
+    responseDeserialize: (value: Buffer): Empty => Empty.decode(value),
+  },
+  /** GetLiveModuleValue gets a value from a live module with the given module ID and key. */
+  getLiveModuleValue: {
+    path: "/mahjong.runner.v1.RunnerService/GetLiveModuleValue" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: GetLiveModuleValueRequest): Buffer =>
+      Buffer.from(GetLiveModuleValueRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): GetLiveModuleValueRequest => GetLiveModuleValueRequest.decode(value),
+    responseSerialize: (value: GetLiveModuleValueResponse): Buffer =>
+      Buffer.from(GetLiveModuleValueResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): GetLiveModuleValueResponse => GetLiveModuleValueResponse.decode(value),
+  },
 } as const;
 
 export interface RunnerServiceServer extends UntypedServiceImplementation {
@@ -912,10 +1224,14 @@ export interface RunnerServiceServer extends UntypedServiceImplementation {
   runYukuCheck: handleUnaryCall<FunctionRequest, FunctionResponse>;
   /** CreateLiveModule creates a live module with the given name, version, and code. */
   createLiveModule: handleUnaryCall<CreateLiveModuleRequest, CreateLiveModuleResponse>;
-  /** RunLiveModule executes a live module with the given module ID and arguments. */
-  runLiveModule: handleUnaryCall<LiveModuleRunRequest, FunctionResponse>;
+  /** CallLiveModuleFn executes a live module with the given module ID and arguments. */
+  callLiveModuleFn: handleUnaryCall<LiveModuleRunRequest, FunctionResponse>;
   /** RemoveLiveModule removes a live module with the given module ID. */
   removeLiveModule: handleUnaryCall<RemoveLiveModuleRequest, Empty>;
+  /** SetLiveModuleValue sets a value in a live module with the given module ID, key, and value. */
+  setLiveModuleValue: handleUnaryCall<SetLiveModuleValueRequest, Empty>;
+  /** GetLiveModuleValue gets a value from a live module with the given module ID and key. */
+  getLiveModuleValue: handleUnaryCall<GetLiveModuleValueRequest, GetLiveModuleValueResponse>;
 }
 
 export interface RunnerServiceClient extends Client {
@@ -973,17 +1289,17 @@ export interface RunnerServiceClient extends Client {
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: CreateLiveModuleResponse) => void,
   ): ClientUnaryCall;
-  /** RunLiveModule executes a live module with the given module ID and arguments. */
-  runLiveModule(
+  /** CallLiveModuleFn executes a live module with the given module ID and arguments. */
+  callLiveModuleFn(
     request: LiveModuleRunRequest,
     callback: (error: ServiceError | null, response: FunctionResponse) => void,
   ): ClientUnaryCall;
-  runLiveModule(
+  callLiveModuleFn(
     request: LiveModuleRunRequest,
     metadata: Metadata,
     callback: (error: ServiceError | null, response: FunctionResponse) => void,
   ): ClientUnaryCall;
-  runLiveModule(
+  callLiveModuleFn(
     request: LiveModuleRunRequest,
     metadata: Metadata,
     options: Partial<CallOptions>,
@@ -1004,6 +1320,38 @@ export interface RunnerServiceClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: Empty) => void,
+  ): ClientUnaryCall;
+  /** SetLiveModuleValue sets a value in a live module with the given module ID, key, and value. */
+  setLiveModuleValue(
+    request: SetLiveModuleValueRequest,
+    callback: (error: ServiceError | null, response: Empty) => void,
+  ): ClientUnaryCall;
+  setLiveModuleValue(
+    request: SetLiveModuleValueRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: Empty) => void,
+  ): ClientUnaryCall;
+  setLiveModuleValue(
+    request: SetLiveModuleValueRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: Empty) => void,
+  ): ClientUnaryCall;
+  /** GetLiveModuleValue gets a value from a live module with the given module ID and key. */
+  getLiveModuleValue(
+    request: GetLiveModuleValueRequest,
+    callback: (error: ServiceError | null, response: GetLiveModuleValueResponse) => void,
+  ): ClientUnaryCall;
+  getLiveModuleValue(
+    request: GetLiveModuleValueRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: GetLiveModuleValueResponse) => void,
+  ): ClientUnaryCall;
+  getLiveModuleValue(
+    request: GetLiveModuleValueRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: GetLiveModuleValueResponse) => void,
   ): ClientUnaryCall;
 }
 

@@ -31,8 +31,8 @@ export enum WorkerStatus {
   Occupied,
 }
 
-export class LiveCodeManager {
-  private static instance: LiveCodeManager | null = null;
+export class LiveModuleManager {
+  private static instance: LiveModuleManager | null = null;
 
   private readonly moduleManager = ModuleManager.getInstance();
 
@@ -81,10 +81,10 @@ export class LiveCodeManager {
   private requestTimeoutMs = 5 * 1000;
 
   public static getInstance(
-    ...parms: Partial<ConstructorParameters<typeof LiveCodeManager>>
-  ): LiveCodeManager {
+    ...parms: Partial<ConstructorParameters<typeof LiveModuleManager>>
+  ): LiveModuleManager {
     if (!this.instance) {
-      this.instance = new LiveCodeManager(...parms);
+      this.instance = new LiveModuleManager(...parms);
     }
     return this.instance;
   }
@@ -395,11 +395,9 @@ export class LiveCodeManager {
 
   public async addLiveModule({
     code,
-    dependencies = [],
     ...manifest
   }: {
     code: string;
-    dependencies?: ModuleDependency[];
   } & LiveModuleManifest): Promise<string> {
     const isStateful = manifest.isStateful;
     const searchKey = this.getModuleSearchKey(manifest);
@@ -420,10 +418,10 @@ export class LiveCodeManager {
     }
 
     try {
-      await this.setupDependencies(workerId, dependencies);
+      await this.setupDependencies(workerId, manifest.dependencies || []);
       await this.sendWorkerMessage(workerId, WorkerMessageEnum.InitLiveModule, {
         code,
-        dependencies,
+        dependencies: manifest.dependencies || [],
       });
 
       this.liveModules.set(currentModuleUUID, {

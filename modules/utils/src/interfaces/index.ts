@@ -1,15 +1,16 @@
 import type { GameSnapshot, MahjongTile, PlayerAction } from '../mahjong/type';
 
-export type PluginManifest = {
-  id: string;
+// Mirrors storage.proto::MethodInfo
+export type MethodInfo = {
   name: string;
-  version: string;
-  description?: string;
-  //priority?: number;
-  capabilities?: readonly PluginCapability[];
+  version: number;
 };
 
-export type PluginInterface = PluginManifest;
+// Mirrors storage.proto::ResourceSource
+export enum ResourceSource {
+  BUILTIN = 'BUILTIN',
+  USER = 'USER',
+}
 
 export enum PluginCapability {
   Lifecycle = 'lifecycle',
@@ -18,6 +19,29 @@ export enum PluginCapability {
   Command = 'command',
   Stateful = 'stateful',
 }
+
+export type PluginManifest = {
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
+  capabilities?: readonly PluginCapability[];
+  // Corresponding code resource for storage/runner lookup.
+  methodInfo?: MethodInfo;
+  resourceSource?: ResourceSource;
+};
+
+// runner.proto::CreateLiveModuleRequest compatibility
+export type PluginLiveRuntimeConfig =
+  | {
+      isStateful: true;
+      defaultState: unknown;
+      ttlMs?: number;
+    }
+  | {
+      isStateful: false;
+      ttlMs?: number;
+    };
 
 export enum LifecycleHookType {
   Init = 'onInit',
@@ -37,6 +61,9 @@ export enum DecisionHookType {
   CalculateScore = 'onCalculateScore',
 }
 
+// Backward compatible alias for older naming.
+export { DecisionHookType as ActionHookType };
+
 export type HookType = LifecycleHookType | DecisionHookType;
 
 export enum PluginHookCategory {
@@ -53,7 +80,6 @@ export type PluginHookDefinition = {
   type: HookType;
   category: PluginHookCategory;
   mode: PluginHookMode;
-  //priority?: number;
 };
 
 export enum PluginActionType {
@@ -65,7 +91,6 @@ export type PluginActionDefinition = {
   id: string;
   label: string;
   type: PluginActionType;
-  //priority?: number;
   payload?: Record<string, unknown>;
 };
 
@@ -116,6 +141,7 @@ export type PluginHookPayloads = {
 };
 
 export type PluginHookContext<StorageType, PayloadType> = {
+  requestId: string;
   manifest: PluginManifest;
   hook: HookType;
   category: PluginHookCategory;
@@ -156,6 +182,7 @@ export type PluginDecisionHooks<StorageType> = Partial<{
 export type PluginInstance<StorageType> = {
   manifest: PluginManifest;
   defaultStore: StorageType;
+  runtime: PluginLiveRuntimeConfig;
   implementation: {
     lifecycle?: PluginLifecycleHooks<StorageType>;
     decision?: PluginDecisionHooks<StorageType>;
@@ -165,3 +192,28 @@ export type PluginInstance<StorageType> = {
 
 export type PluginImplementation<StorageType> =
   PluginInstance<StorageType>['implementation'];
+
+// runtime live_module_runner.ts and runner.proto contracts
+export type LiveModuleFunctionArgs = {
+  this: unknown;
+  args: unknown[];
+};
+
+export type RunnerCreateLiveModulePayload = {
+  manifest: MethodInfo;
+  isStateful?: boolean;
+};
+
+export type RunnerCallLiveModulePayload = {
+  moduleId: string;
+  functionName: string;
+  payload: LiveModuleFunctionArgs;
+};
+
+export type RunnerLiveModuleBinding = {
+  pluginId: string;
+  moduleId: string;
+  manifest: MethodInfo;
+  runtime: PluginLiveRuntimeConfig;
+  dependencies: MethodInfo[];
+};

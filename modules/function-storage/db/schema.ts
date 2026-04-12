@@ -8,6 +8,7 @@ import {
   index,
   uniqueIndex,
   bigint,
+  boolean,
 } from 'drizzle-orm/pg-core';
 
 export const schema = pgSchema('function_storage');
@@ -89,6 +90,27 @@ export const dependencies = pgTable(
         table.sourceVersionId,
         table.dependencyVersionId,
       ),
+    ];
+  },
+);
+
+export const pluginDefinitions = pgTable(
+  'plugin_definitions',
+  {
+    id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
+    versionId: integer('version_id')
+      .notNull()
+      .references(() => versions.id),
+    isStateful: boolean('is_stateful').notNull().default(false),
+    // Stored as JSON string to keep payload format-agnostic.
+    defaultStore: text('default_store').notNull().default('{}'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex('uq_plugin_definitions_version_id').on(table.versionId),
+      index('idx_plugin_definitions_version_id').on(table.versionId),
     ];
   },
 );
