@@ -101,7 +101,6 @@ export enum MahjongGameLobbyStatus {
 
 export enum PlayerAction {
   DrawTile,
-  DiscardTile,
   Chi,
   Pon,
   Kan,

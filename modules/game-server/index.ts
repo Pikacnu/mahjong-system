@@ -1,4 +1,13 @@
 import { createWebHandler } from 'utils';
+import { createRunnerGateway, createStorageGateway } from './src/type';
+import type { StorageGateway, RunnerGateway } from './src/type/gateway';
+
+const storageGateway: StorageGateway = createStorageGateway(
+  `localhost:${process.env.GRPC_PORT}`,
+);
+const runnerGateway: RunnerGateway = createRunnerGateway(
+  `localhost:${process.env.GRPC_PORT}`,
+);
 
 export const gameServerHandler = createWebHandler({
   fetch(req, server) {

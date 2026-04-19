@@ -5,7 +5,7 @@ import {
   unaryCall,
 } from 'proto';
 import { ResourceSource, decodeFromBytes, encodeToBytes } from 'utils';
-import type { RunnerGateway, StorageGateway } from '../plugins/plugin-manager';
+import type { RunnerGateway, StorageGateway } from '../type/gateway';
 
 function toStorageResourceSource(
   source?: ResourceSource,

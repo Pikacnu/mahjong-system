@@ -107,8 +107,7 @@ export type PluginHookPayloads = {
     roundIndex: number;
   };
   [LifecycleHookType.RoundEnd]: {
-    winningPlayerId: string | null;
-    winningTiles: MahjongTile[] | null;
+    roundIndex: number;
   };
   [LifecycleHookType.GameEnd]: {
     finalPlayerScores: Record<string, number>;
@@ -122,21 +121,25 @@ export type PluginHookPayloads = {
   [DecisionHookType.EvaluateAvailableActions]: {
     playerId: string;
     tiles: MahjongTile[];
+    discardedTiles?: Set<MahjongTile>;
   };
   [DecisionHookType.ValidateAction]: {
     playerId: string;
     action: PlayerAction;
     tiles: MahjongTile[];
+    discardedTiles?: Set<MahjongTile>;
   };
   [DecisionHookType.ResolveAction]: {
     playerId: string;
     action: PlayerAction;
     tiles: MahjongTile[];
+    discardedTiles?: Set<MahjongTile>;
   };
   [DecisionHookType.CalculateScore]: {
     winnerPlayerId: string;
     winningTiles: MahjongTile[];
     finalPlayerScores: Record<string, number>;
+    discardedTiles?: Set<MahjongTile>;
   };
 };
 
@@ -152,6 +155,22 @@ export type PluginHookContext<StorageType, PayloadType> = {
   roundIndex?: number;
 };
 
+export enum GameStatusPatches {
+  PlayerHandTiles,
+  PlayerDrawedTiles,
+  PlayerActionTiles,
+  RedDoraTile,
+  UraDoraTile,
+  PlayerScores,
+  GameStats,
+}
+
+export type GameStatsPatch = {
+  patchesType: GameStatusPatches.GameStats;
+  stats: Record<string, unknown>;
+  isGameStatsPatch: true;
+};
+
 export type PluginHookResult<
   StorageType,
   ActionType = PluginActionDefinition,
@@ -160,8 +179,13 @@ export type PluginHookResult<
   reason?: string;
   storage?: StorageType;
   patch?: Partial<StorageType>;
+  gameStatsPatch?: GameStatsPatch[];
   availableActions?: readonly ActionType[];
   stopPropagation?: boolean;
+};
+
+export type WithPluginId<T> = T & {
+  pluginId: string;
 };
 
 export type PluginHookHandler<StorageType, HookName extends HookType> = (

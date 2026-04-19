@@ -1,8 +1,6 @@
 import {
   DecisionHookType,
   LifecycleHookType,
-  PluginHookCategory,
-  PluginHookMode,
   type HookType,
   type PluginHookDefinition,
   type PluginHookPayloads,
@@ -14,41 +12,15 @@ import {
   ResourceSource,
   decodeFromBytes,
   decodeUnknown,
-  type RunnerCreateLiveModulePayload,
   type RunnerLiveModuleBinding,
+  type WithPluginId,
+  GameStatusPatches,
 } from 'utils';
+import type { RunnerGateway, StorageGateway } from '../type/gateway';
 
 type RegisteredPlugin = {
   priority: number;
   instance: PluginInstance<unknown>;
-};
-
-export type RunnerGateway = {
-  createLiveModule(
-    payload: RunnerCreateLiveModulePayload,
-  ): Promise<{ moduleId: string }>;
-  callLiveModuleFn(payload: {
-    moduleId: string;
-    functionName: string;
-    payload: { this: unknown; args: unknown[] };
-  }): Promise<unknown>;
-  removeLiveModule(payload: { moduleId: string }): Promise<void>;
-  setLiveModuleValue(payload: {
-    moduleId: string;
-    key: string;
-    value: unknown;
-  }): Promise<void>;
-};
-
-export type StorageGateway = {
-  getPluginDefinition(payload: {
-    methodInfo: MethodInfo;
-    resourceSource?: ResourceSource;
-  }): Promise<{
-    isStateful: boolean;
-    defaultStore: unknown;
-    dependencies: MethodInfo[];
-  }>;
 };
 
 export class PluginManager {
@@ -150,8 +122,8 @@ export class PluginManager {
     payload: PluginHookPayloads[HookName];
     playerId?: string;
     roundIndex?: number;
-  }): Promise<PluginHookResult<StorageType>[]> {
-    const results: PluginHookResult<StorageType>[] = [];
+  }): Promise<WithPluginId<PluginHookResult<StorageType>>[]> {
+    const results: WithPluginId<PluginHookResult<StorageType>>[] = [];
 
     for (const pluginId of this.getHookPipeline(hook)) {
       const registered = this.plugins.get(pluginId);
@@ -172,7 +144,10 @@ export class PluginManager {
       });
 
       if (implementationResult) {
-        results.push(implementationResult);
+        results.push({
+          ...implementationResult,
+          pluginId,
+        });
         if (implementationResult.storage !== undefined) {
           this.pluginStorages.set(pluginId, implementationResult.storage);
         } else if (implementationResult.patch) {
@@ -197,8 +172,21 @@ export class PluginManager {
         },
       );
 
-      if (runnerResult !== undefined) {
-        results.push(runnerResult as PluginHookResult<StorageType>);
+      if (runnerResult === undefined) {
+        continue;
+      }
+      results.push({
+        ...runnerResult,
+        pluginId,
+      } as WithPluginId<PluginHookResult<StorageType>>);
+      if (runnerResult.storage !== undefined) {
+        this.pluginStorages.set(pluginId, runnerResult.storage);
+      }
+      if (runnerResult.patch) {
+        this.pluginStorages.set(pluginId, {
+          ...(storage as Record<string, unknown>),
+          ...(runnerResult.patch as Record<string, unknown>),
+        } as StorageType);
       }
     }
 
