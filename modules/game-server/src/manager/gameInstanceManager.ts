@@ -4,27 +4,30 @@ import type { RunnerGateway, StorageGateway } from '../type/gateway';
 
 export class GameInstanceManager {
   private gameInstances = new Map<string, Game>();
-  private instance: GameInstanceManager | null = null;
-  private runnerGateway: RunnerGateway | null = null;
-  private storageGateway: StorageGateway | null = null;
+  private static instance: GameInstanceManager | null = null;
+  private static runnerGateway: RunnerGateway | null = null;
+  private static storageGateway: StorageGateway | null = null;
 
-  public getInstanceManager({
+  public static getInstanceManager({
     runnerGateway,
     storageGateway,
   }: {
     runnerGateway: RunnerGateway;
     storageGateway: StorageGateway;
   }): GameInstanceManager {
-    this.runnerGateway = runnerGateway;
-    this.storageGateway = storageGateway;
-    if (!this.instance) {
-      this.instance = new GameInstanceManager();
+    GameInstanceManager.runnerGateway = runnerGateway;
+    GameInstanceManager.storageGateway = storageGateway;
+    if (!GameInstanceManager.instance) {
+      GameInstanceManager.instance = new GameInstanceManager();
     }
-    return this.instance;
+    return GameInstanceManager.instance;
   }
 
   public isInitialized(): boolean {
-    return this.runnerGateway !== null && this.storageGateway !== null;
+    return (
+      GameInstanceManager.runnerGateway !== null &&
+      GameInstanceManager.storageGateway !== null
+    );
   }
 
   public createGameInstance(): string {
@@ -36,8 +39,8 @@ export class GameInstanceManager {
       throw new Error(`GameInstanceManager is not initialized`);
     }
     const gameInstance = new Game({
-      runnergRPCClient: this.runnerGateway!,
-      storagegRPCClient: this.storageGateway!,
+      runnergRPCClient: GameInstanceManager.runnerGateway!,
+      storagegRPCClient: GameInstanceManager.storageGateway!,
       gameEndCallback: ((gameId: string) => {
         return ((data: GameEndCallbackData) => {
           // Handle game end logic here, e.g., logging, cleanup, notifying other services, etc.

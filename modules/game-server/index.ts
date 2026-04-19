@@ -1,6 +1,7 @@
 import { createWebHandler } from 'utils';
 import { createRunnerGateway, createStorageGateway } from './src/type';
 import type { StorageGateway, RunnerGateway } from './src/type/gateway';
+import { GameInstanceManager } from './src/manager/gameInstanceManager';
 
 const storageGateway: StorageGateway = createStorageGateway(
   `localhost:${process.env.GRPC_PORT}`,
@@ -8,6 +9,11 @@ const storageGateway: StorageGateway = createStorageGateway(
 const runnerGateway: RunnerGateway = createRunnerGateway(
   `localhost:${process.env.GRPC_PORT}`,
 );
+
+const gameInstanceManager = GameInstanceManager.getInstanceManager({
+  runnerGateway,
+  storageGateway,
+});
 
 export const gameServerHandler = createWebHandler({
   fetch(req, server) {
