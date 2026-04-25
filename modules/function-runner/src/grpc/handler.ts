@@ -6,7 +6,7 @@ import { storageServiceClient } from './storage-client';
 import { WorkerManager } from '../manager/normal_runner_manager';
 import type { RunTaskPayload, VMOptions } from '../utils/type';
 import type { CodeCacher } from '../utils/cacher';
-import { LiveModuleManager } from '../manager/live_code_manager';
+import { LiveModuleManager } from '../manager/live_module_manager';
 import { decodeFromBytes } from 'utils';
 
 const liveModuleManager = LiveModuleManager.getInstance();
@@ -128,8 +128,9 @@ export function createFunctionRunnerGRPCHandler({
         );
       }
     },
+
     createLiveModule: async (call, callback) => {
-      const { manifest, isStateful } = call.request;
+      const { manifest } = call.request;
       if (!manifest) {
         return callback(
           {
@@ -141,14 +142,10 @@ export function createFunctionRunnerGRPCHandler({
       }
 
       let dependencies: MahjongCodeStorageV1.MethodInfo[] = [];
-      let resolvedIsStateful = isStateful ?? false;
-      let defaultState: unknown = {};
 
       try {
         const definition = await fetchPluginDefinition(manifest);
         dependencies = definition.dependencies;
-        resolvedIsStateful = definition.isStateful;
-        defaultState = definition.defaultStore;
       } catch {
         dependencies = await fetchDependencies(manifest);
       }
@@ -169,18 +166,10 @@ export function createFunctionRunnerGRPCHandler({
         );
       }
       try {
-        const liveManifest = resolvedIsStateful
-          ? {
-              ...manifest,
-              dependencies,
-              isStateful: true as const,
-              defaultState,
-            }
-          : {
-              ...manifest,
-              dependencies,
-              isStateful: false as const,
-            };
+        const liveManifest = {
+          ...manifest,
+          dependencies,
+        };
 
         const liveModuleId = await liveModuleManager.addLiveModule({
           code: reosurceCodeInfo.code,
@@ -198,6 +187,7 @@ export function createFunctionRunnerGRPCHandler({
         );
       }
     },
+
     callLiveModuleFn: async (call, callback) => {
       const { moduleId, functionName, payload } = call.request;
       if (!moduleId || !functionName || !payload) {
@@ -230,6 +220,7 @@ export function createFunctionRunnerGRPCHandler({
         );
       }
     },
+
     removeLiveModule: async (call, callback) => {
       const { moduleId } = call.request;
       if (!moduleId) {

@@ -28,7 +28,6 @@ export function createRunnerGateway(address: string): RunnerGateway {
     async createLiveModule(payload) {
       const response = await unaryCall(client.createLiveModule.bind(client), {
         manifest: payload.manifest,
-        isStateful: payload.isStateful,
       });
       return { moduleId: response.moduleId };
     },
@@ -57,6 +56,14 @@ export function createRunnerGateway(address: string): RunnerGateway {
         key: payload.key,
         value: encodeToBytes(payload.value) as Buffer,
       });
+    },
+
+    async getLiveModuleValue(payload) {
+      const response = await unaryCall(client.getLiveModuleValue.bind(client), {
+        moduleId: payload.moduleId,
+        key: payload.key,
+      });
+      return decodeFromBytes(response.value);
     },
   };
 }

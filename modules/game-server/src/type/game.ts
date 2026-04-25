@@ -1,18 +1,17 @@
 import { randomUUIDv7 } from 'bun';
 import {
   ActionHookType,
-  type DrawTile,
   type GameNextRequest,
   type GameNextResponse,
   type GameStatsPatch,
+  GameStatusPatches,
   type HookType,
   LifecycleHookType,
   MahjongGameRoundStatus,
   type MahjongTile,
   PlayerAction,
-  type PlayerActionTileEntry,
   PlayerActionType,
-  type PluginHookContext,
+  PlayerStatusPatches,
   type PluginHookPayloads,
   type PluginHookResult,
   TimeoutAction,
@@ -28,6 +27,7 @@ import {
   PluginManager,
 } from '../type';
 import { Player } from './player';
+import type { ActionSharedData, ActionSharedDataPlayersData } from './utils';
 
 export type GameEndCallbackData = {};
 /**
@@ -62,6 +62,7 @@ export class Game {
     new Map();
   private resolvedPlayerActions: Map<string, PlayerAction | null> = new Map();
   private gameEndCallback: ((data: GameEndCallbackData) => void) | undefined;
+  private isGameEnded = false;
 
   constructor({
     playerActionTimeLimit = 20_000,
@@ -127,8 +128,6 @@ export class Game {
     this.table.addPlayerDrawedTile(currentPlayerId, tile);
 
     // Check if player can do any action before drawing tile (e.g., Ron, Tsumo)
-    // 第3項設計：這裡只負責建立待處理狀態；真正的玩家回覆由遊戲伺服器
-    // 收到後，再透過 gRPC / next(...) 回呼進來推進狀態，Game 不主動輪詢玩家輸入。
 
     await this.runHook({
       hook: ActionHookType.EvaluateAvailableActions,
@@ -383,10 +382,7 @@ export class Game {
     }
     // 若牌堆已空，這裡應結束整局遊戲並通知外部系統進入最終結算或結果顯示。
 
-    if (
-      // If Game Ended
-      false
-    ) {
+    if (this.isGameEnded) {
       this.gameEndCallback!({});
     }
   }
@@ -460,15 +456,79 @@ export class Game {
     return player;
   }
 
+  private async buildCurrentPluginRunnerSharedData(): Promise<
+    Omit<ActionSharedData, 'isCurrentPlayer'>
+  > {
+    return {
+      currentPlayerId: this.getCurrentPlayerId(),
+      PlayersData: Array.from(this.players.entries()).map(
+        ([playerId, player]) => ({
+          playerId,
+          handCount: player.getHandTiles().length,
+          openedTiles: player.getActionLogs(),
+          isRiichi: false,
+        }),
+      ),
+      roundIndex: this.roundIndex,
+      doraIndicators: this.table.getRedDoraTiles(),
+      currentDiscard: this.table
+        .getPlayerUsedTiles(this.getCurrentPlayerId())
+        .slice(-1)[0],
+      isFirstTurn: this.roundIndex === 0,
+    };
+  }
+
   private patchesReslover(patches: GameStatsPatch[]): void {
     for (const patch of patches) {
-      switch (patch.patchesType) {
+      switch (patch.patchType) {
+        case PlayerStatusPatches.PlayerScores: {
+          const { playerId, delta } = patch.data;
+          const player = this.players.get(playerId);
+          if (!player) {
+            console.warn('Player not found for score patch:', playerId);
+            break;
+          }
+          player.setScore(player.getScore() + delta);
+          break;
+        }
+        case PlayerStatusPatches.PlayerHandTile: {
+          const { playerId, handTile, replaceTile } = patch.data;
+          const player = this.players.get(playerId);
+          if (!player) {
+            console.warn('Player not found for hand tiles patch:', playerId);
+            break;
+          }
+          if (replaceTile) {
+            player.removeHandTile(replaceTile);
+          }
+          player.addHandTile(handTile);
+          break;
+        }
+        case PlayerStatusPatches.PlayerHandTiles: {
+          const { playerId, handTiles } = patch.data;
+          const player = this.players.get(playerId);
+          if (!player) {
+            console.warn('Player not found for hand tiles patch:', playerId);
+            break;
+          }
+          player.replaceHandTiles(handTiles);
+          break;
+        }
+        // Game Status Patches
+        // WIP
+        case GameStatusPatches.GameStats: {
+          break;
+        }
         // Handle different patch types
         default: {
           console.warn('Unknown patch type:', patch);
         }
       }
     }
+  }
+
+  private async CalcScore(): Promise<void> {
+    const sharedData = await this.buildCurrentPluginRunnerSharedData();
   }
 
   private async runHook<HookName extends HookType>(data: {
@@ -487,7 +547,7 @@ export class Game {
   > {
     // hookResult already sorted by plugin priority
     const hookResult = await this.modulePluginManager?.runHook(data)!;
-    const notAcceptedResult = hookResult.find((result) => !result.accepted);
+    const notAcceptedResult = hookResult.find((result) => result.reject);
     if (notAcceptedResult) {
       return { accepted: false };
     }

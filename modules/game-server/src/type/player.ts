@@ -8,10 +8,23 @@ import {
 export class Player {
   private handTiles: Array<DrawTile<MahjongTile>> = [];
   private usedTiles: Set<number> = new Set();
+  private score: number = 0;
   private actionLogs: Array<PlayerActionTileEntry> = [];
+
+  public setScore(score: number): void {
+    this.score = score;
+  }
+
+  public getScore(): number {
+    return this.score;
+  }
 
   public getHandTiles(): Array<MahjongTile> {
     return this.handTiles.map((tile) => ({ ...tile }));
+  }
+
+  public replaceHandTiles(tiles: MahjongTile[]): void {
+    this.handTiles = tiles;
   }
 
   public addHandTile(tile: MahjongTile): void {

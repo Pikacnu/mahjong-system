@@ -59,7 +59,6 @@ export interface FunctionResponse {
  */
 export interface CreateLiveModuleRequest {
   manifest?: LiveModuleManifest | undefined;
-  isStateful?: boolean | undefined;
 }
 
 /**
@@ -427,16 +426,13 @@ export const FunctionResponse: MessageFns<FunctionResponse> = {
 };
 
 function createBaseCreateLiveModuleRequest(): CreateLiveModuleRequest {
-  return { manifest: undefined, isStateful: undefined };
+  return { manifest: undefined };
 }
 
 export const CreateLiveModuleRequest: MessageFns<CreateLiveModuleRequest> = {
   encode(message: CreateLiveModuleRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.manifest !== undefined) {
       LiveModuleManifest.encode(message.manifest, writer.uint32(10).fork()).join();
-    }
-    if (message.isStateful !== undefined) {
-      writer.uint32(16).bool(message.isStateful);
     }
     return writer;
   },
@@ -456,14 +452,6 @@ export const CreateLiveModuleRequest: MessageFns<CreateLiveModuleRequest> = {
           message.manifest = LiveModuleManifest.decode(reader, reader.uint32());
           continue;
         }
-        case 2: {
-          if (tag !== 16) {
-            break;
-          }
-
-          message.isStateful = reader.bool();
-          continue;
-        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -474,23 +462,13 @@ export const CreateLiveModuleRequest: MessageFns<CreateLiveModuleRequest> = {
   },
 
   fromJSON(object: any): CreateLiveModuleRequest {
-    return {
-      manifest: isSet(object.manifest) ? LiveModuleManifest.fromJSON(object.manifest) : undefined,
-      isStateful: isSet(object.isStateful)
-        ? globalThis.Boolean(object.isStateful)
-        : isSet(object.is_stateful)
-        ? globalThis.Boolean(object.is_stateful)
-        : undefined,
-    };
+    return { manifest: isSet(object.manifest) ? LiveModuleManifest.fromJSON(object.manifest) : undefined };
   },
 
   toJSON(message: CreateLiveModuleRequest): unknown {
     const obj: any = {};
     if (message.manifest !== undefined) {
       obj.manifest = LiveModuleManifest.toJSON(message.manifest);
-    }
-    if (message.isStateful !== undefined) {
-      obj.isStateful = message.isStateful;
     }
     return obj;
   },
@@ -503,7 +481,6 @@ export const CreateLiveModuleRequest: MessageFns<CreateLiveModuleRequest> = {
     message.manifest = (object.manifest !== undefined && object.manifest !== null)
       ? LiveModuleManifest.fromPartial(object.manifest)
       : undefined;
-    message.isStateful = object.isStateful ?? undefined;
     return message;
   },
 };

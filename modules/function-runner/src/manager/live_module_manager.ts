@@ -16,15 +16,11 @@ export type LiveModuleManifest = {
   version: number;
   description?: string;
   dependencies?: ModuleDependency[];
-} & (
-  | {
-      isStateful: true;
-      defaultState: any;
-    }
-  | {
-      isStateful: false;
-    }
-);
+  // Note: defaultStore / defaultState should be passed in via call payload
+  // by the Game Server (as function parameter), not stored here.
+  // Optional defaultState may be provided at creation time for worker reference only.
+  defaultState?: any;
+};
 
 export enum WorkerStatus {
   Idle,
@@ -37,7 +33,7 @@ export class LiveModuleManager {
   private readonly moduleManager = ModuleManager.getInstance();
 
   // key is moduleId, value contains workerId, manifest and code
-  private liveModules: Map<
+  private modulesById: Map<
     string,
     {
       workerId: string;
@@ -47,29 +43,31 @@ export class LiveModuleManager {
     }
   > = new Map();
 
-  // key is `${name}_${version}`, value is moduleId
-  private statelessLiveModules: Map<string, string> = new Map();
+  // key is `${name}_${version}`, value is moduleId Array
+  private modulesIndex: Map<string, string[]> = new Map();
 
-  // key is `${name}_${version}_${isStateful ? 'stateful' : 'stateless'}`, value is moduleId
-  private liveModulesSearchMap: Map<string, string[]> = new Map();
-
-  private statelessLiveModulesClearIdSet: Set<string> = new Set();
-  private statelessLiveModulesClearQueue: Map<
+  // stateless cleanup tracking (by module key)
+  private statelessCleanupKeys: Set<string> = new Set();
+  private statelessCleanupQueue: Map<
     string,
     { moduleId: string; lastExecuteDate: number }
   > = new Map();
-  private statelessLiveModulesMaxIdleTime = 10 * 60 * 1000; // 10 minutes
-  private statefulLiveModulesTTLQueue: Map<
+  private statelessMaxIdleMs = 10 * 60 * 1000; // 10 minutes
+
+  // stateful TTL tracking (per module id)
+  private statefulTTLMap: Map<
     string,
     { moduleId: string; lastExecuteDate: number }
   > = new Map();
-  private statefulLiveModulesMaxTTL = 60 * 60 * 1000; // 1 hour
-  private statelessLiveModulesClearIntervalId: NodeJS.Timeout | null = null;
+  private statefulMaxTTLMs = 60 * 60 * 1000; // 1 hour
+  private statelessCleanupIntervalId: NodeJS.Timeout | null = null;
 
-  private workers: Map<string, Worker> = new Map();
-  private workerState: Map<string, WorkerStatus> = new Map();
-  private workerCount: number = 2;
-  private pendingRequests: Map<
+  // worker pool and status
+  private workerPool: Map<string, Worker> = new Map();
+  private workerStatus: Map<string, WorkerStatus> = new Map();
+  private poolSize: number = 2;
+
+  private inflightRequests: Map<
     string,
     {
       workerId: string;
@@ -90,53 +88,42 @@ export class LiveModuleManager {
   }
 
   constructor(workerCount: number = 2) {
-    this.workerCount = workerCount;
-    for (let i = 0; i < this.workerCount; i++) {
+    this.poolSize = workerCount;
+    for (let i = 0; i < this.poolSize; i++) {
       const currentWorkerId = randomUUIDv7();
       const worker = this.getWorker(currentWorkerId);
-      this.workers.set(currentWorkerId, worker);
-      this.workerState.set(currentWorkerId, WorkerStatus.Idle);
+      this.workerPool.set(currentWorkerId, worker);
+      this.workerStatus.set(currentWorkerId, WorkerStatus.Idle);
     }
     this.startStatelessLiveModulesClearInterval();
   }
 
   private startStatelessLiveModulesClearInterval() {
-    if (this.statelessLiveModulesClearIntervalId) return;
+    if (this.statelessCleanupIntervalId) return;
 
-    this.statelessLiveModulesClearIntervalId = setInterval(() => {
+    this.statelessCleanupIntervalId = setInterval(() => {
       const currentTime = Date.now();
+      this.statefulTTLMap.forEach(({ moduleId, lastExecuteDate }, key) => {
+        if (Math.abs(currentTime - lastExecuteDate) < this.statefulMaxTTLMs) {
+          return;
+        }
+        this.removeLiveModule(moduleId).catch(() => {
+          // no-op
+        });
+        this.statefulTTLMap.delete(key);
+      });
 
-      this.statefulLiveModulesTTLQueue.forEach(
-        ({ moduleId, lastExecuteDate }, key) => {
-          if (
-            Math.abs(currentTime - lastExecuteDate) <
-            this.statefulLiveModulesMaxTTL
-          ) {
-            return;
-          }
-          this.removeLiveModule(moduleId).catch(() => {
-            // no-op
-          });
-          this.statefulLiveModulesTTLQueue.delete(key);
-        },
-      );
-
-      this.statelessLiveModulesClearQueue.forEach(
-        ({ moduleId, lastExecuteDate }, key) => {
-          if (
-            Math.abs(currentTime - lastExecuteDate) <
-            this.statelessLiveModulesMaxIdleTime
-          ) {
-            return;
-          }
-          this.removeLiveModule(moduleId).catch(() => {
-            // no-op
-          });
-          this.statelessLiveModulesClearQueue.delete(key);
-          this.statelessLiveModulesClearIdSet.delete(key);
-        },
-      );
-    }, this.statelessLiveModulesMaxIdleTime / 10);
+      this.statelessCleanupQueue.forEach(({ moduleId, lastExecuteDate }, key) => {
+        if (Math.abs(currentTime - lastExecuteDate) < this.statelessMaxIdleMs) {
+          return;
+        }
+        this.removeLiveModule(moduleId).catch(() => {
+          // no-op
+        });
+        this.statelessCleanupQueue.delete(key);
+        this.statelessCleanupKeys.delete(key);
+      });
+    }, this.statelessMaxIdleMs / 10);
   }
 
   private getWorker(workerId: string): Worker {
@@ -167,25 +154,14 @@ export class LiveModuleManager {
     return worker;
   }
 
-  private getModuleSearchKey({
-    name,
-    version,
-    isStateful,
-  }: Pick<LiveModuleManifest, 'name' | 'version' | 'isStateful'>): string {
-    return `${name}_${version}_${isStateful ? 'stateful' : 'stateless'}`;
-  }
-
-  private getLiveModuleKey({
-    name,
-    version,
-  }: Pick<LiveModuleManifest, 'name' | 'version'>): string {
+  private getModuleKey({ name, version }: Pick<LiveModuleManifest, 'name' | 'version'>): string {
     return `${name}_${version}`;
   }
 
-  private getIdleWorkerId(): string | undefined {
-    for (const [workerId, status] of this.workerState.entries()) {
+  private acquireIdleWorkerId(): string | undefined {
+    for (const [workerId, status] of this.workerStatus.entries()) {
       if (status === WorkerStatus.Idle) {
-        this.workerState.set(workerId, WorkerStatus.Occupied);
+        this.workerStatus.set(workerId, WorkerStatus.Occupied);
         return workerId;
       }
     }
@@ -193,14 +169,14 @@ export class LiveModuleManager {
   }
 
   private releaseWorker(workerId: string) {
-    this.workerState.set(workerId, WorkerStatus.Idle);
+    this.workerStatus.set(workerId, WorkerStatus.Idle);
   }
 
   private processWorkerMessage(workerId: string, event: MessageEvent) {
     const { id, status, payload } = event.data as WorkerMessage;
     if (!id) return;
 
-    const pendingRequest = this.pendingRequests.get(id);
+    const pendingRequest = this.inflightRequests.get(id);
     if (!pendingRequest) return;
 
     if (pendingRequest.timeoutId) {
@@ -217,7 +193,7 @@ export class LiveModuleManager {
       );
     }
 
-    this.pendingRequests.delete(id);
+    this.inflightRequests.delete(id);
   }
 
   private handleWorkerFailure(
@@ -230,31 +206,24 @@ export class LiveModuleManager {
         ? reason.message
         : `Worker failed: ${String(reason || 'unknown reason')}`;
 
-    for (const [requestId, pending] of this.pendingRequests.entries()) {
+    for (const [requestId, pending] of this.inflightRequests.entries()) {
       if (pending.workerId !== workerId) continue;
       if (pending.timeoutId) clearTimeout(pending.timeoutId);
       pending.reject(new Error(message));
-      this.pendingRequests.delete(requestId);
+      this.inflightRequests.delete(requestId);
     }
 
-    for (const [moduleId, module] of this.liveModules.entries()) {
+    for (const [moduleId, module] of this.modulesById.entries()) {
       if (module.workerId !== workerId) continue;
-      this.liveModules.delete(moduleId);
-      this.statefulLiveModulesTTLQueue.delete(moduleId);
-      if (!module.manifest.isStateful) {
-        this.statelessLiveModules.delete(
-          this.getLiveModuleKey(module.manifest),
-        );
-      }
+      this.modulesById.delete(moduleId);
+      this.statefulTTLMap.delete(moduleId);
       const searchKey = module.searchKey;
-      const currentIds = this.liveModulesSearchMap.get(searchKey) || [];
-      const updatedIds = currentIds.filter(
-        (currentId) => currentId !== moduleId,
-      );
+      const currentIds = this.modulesIndex.get(searchKey) || [];
+      const updatedIds = currentIds.filter((currentId) => currentId !== moduleId);
       if (updatedIds.length === 0) {
-        this.liveModulesSearchMap.delete(searchKey);
+        this.modulesIndex.delete(searchKey);
       } else {
-        this.liveModulesSearchMap.set(searchKey, updatedIds);
+        this.modulesIndex.set(searchKey, updatedIds);
       }
     }
 
@@ -266,7 +235,7 @@ export class LiveModuleManager {
       // no-op
     }
 
-    this.workers.set(workerId, this.getWorker(workerId));
+    this.workerPool.set(workerId, this.getWorker(workerId));
   }
 
   private sendWorkerMessage<T extends WorkerMessageEnum>(
@@ -274,7 +243,7 @@ export class LiveModuleManager {
     type: T,
     payload?: unknown,
   ): Promise<WorkerMessage> {
-    const worker = this.workers.get(workerId);
+    const worker = this.workerPool.get(workerId);
     if (!worker) {
       throw new Error(`Worker not found: ${workerId}`);
     }
@@ -283,17 +252,13 @@ export class LiveModuleManager {
 
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
-        if (this.pendingRequests.has(id)) {
-          this.pendingRequests.delete(id);
-          reject(
-            new Error(
-              `Live worker request timeout after ${this.requestTimeoutMs}ms`,
-            ),
-          );
+        if (this.inflightRequests.has(id)) {
+          this.inflightRequests.delete(id);
+          reject(new Error(`Live worker request timeout after ${this.requestTimeoutMs}ms`));
         }
       }, this.requestTimeoutMs);
 
-      this.pendingRequests.set(id, {
+      this.inflightRequests.set(id, {
         workerId,
         resolve,
         reject,
@@ -386,7 +351,7 @@ export class LiveModuleManager {
   }
 
   private getLiveModuleOrThrow(id: string) {
-    const liveModule = this.liveModules.get(id);
+    const liveModule = this.modulesById.get(id);
     if (!liveModule) {
       throw new Error(`Live module not found: ${id}`);
     }
@@ -395,26 +360,32 @@ export class LiveModuleManager {
 
   public async addLiveModule({
     code,
+    defaultState,
     ...manifest
   }: {
     code: string;
+    defaultState?: any;
   } & LiveModuleManifest): Promise<string> {
-    const isStateful = manifest.isStateful;
-    const searchKey = this.getModuleSearchKey(manifest);
-    if (!isStateful && this.liveModulesSearchMap.has(searchKey)) {
-      return this.liveModulesSearchMap.get(searchKey)![0]!;
-    }
-    const currentModuleUUID = randomUUIDv7();
-    const workerId = this.getIdleWorkerId();
-    if (!workerId) {
-      throw new Error('No idle worker available');
+    const searchKey = this.getModuleKey(manifest);
+    if (this.modulesIndex.has(searchKey)) {
+      const availableModules = this.modulesIndex.get(searchKey)!;
+      if (availableModules.length > 0) {
+        const targetModules =
+          availableModules[
+            Math.floor(Math.random() * availableModules.length)
+          ]!;
+        this.statelessCleanupQueue.set(searchKey, {
+          moduleId: targetModules,
+          lastExecuteDate: Date.now(),
+        });
+        return targetModules;
+      }
     }
 
-    if (!isStateful) {
-      this.statelessLiveModules.set(
-        `${manifest.name}_${manifest.version}`,
-        currentModuleUUID,
-      );
+    const currentModuleUUID = randomUUIDv7();
+    const workerId = this.acquireIdleWorkerId();
+    if (!workerId) {
+      throw new Error('No idle worker available');
     }
 
     try {
@@ -422,24 +393,24 @@ export class LiveModuleManager {
       await this.sendWorkerMessage(workerId, WorkerMessageEnum.InitLiveModule, {
         code,
         dependencies: manifest.dependencies || [],
+        defaultState,
       });
 
-      this.liveModules.set(currentModuleUUID, {
+      const storedManifest = {
+        ...manifest,
+        defaultState,
+      } as LiveModuleManifest;
+
+      this.modulesById.set(currentModuleUUID, {
         workerId: workerId,
         searchKey: searchKey,
-        manifest,
+        manifest: storedManifest,
         code,
       });
-      this.liveModulesSearchMap.set(searchKey, [
-        ...(this.liveModulesSearchMap.get(searchKey) || []),
+      this.modulesIndex.set(searchKey, [
+        ...(this.modulesIndex.get(searchKey) || []),
         currentModuleUUID,
       ]);
-      if (isStateful) {
-        this.statefulLiveModulesTTLQueue.set(currentModuleUUID, {
-          moduleId: currentModuleUUID,
-          lastExecuteDate: Date.now(),
-        });
-      }
 
       return currentModuleUUID;
     } catch (error) {
@@ -449,7 +420,7 @@ export class LiveModuleManager {
   }
 
   public async removeLiveModule(id: string) {
-    const liveModule = this.liveModules.get(id);
+    const liveModule = this.modulesById.get(id);
     if (!liveModule) return;
 
     try {
@@ -459,37 +430,26 @@ export class LiveModuleManager {
       );
     } finally {
       const searchKey = liveModule.searchKey;
-      const moduleIds = this.liveModulesSearchMap.get(searchKey);
+      const moduleIds = this.modulesIndex.get(searchKey);
       if (moduleIds) {
         const updatedModuleIds = moduleIds.filter((v) => v !== id);
         if (updatedModuleIds.length === 0) {
-          this.liveModulesSearchMap.delete(searchKey);
+          this.modulesIndex.delete(searchKey);
         } else {
-          this.liveModulesSearchMap.set(searchKey, updatedModuleIds);
+          this.modulesIndex.set(searchKey, updatedModuleIds);
         }
       }
-      this.liveModules.delete(id);
-      this.statefulLiveModulesTTLQueue.delete(id);
+      this.modulesById.delete(id);
+      this.statefulTTLMap.delete(id);
       this.releaseWorker(liveModule.workerId);
-      if (!liveModule.manifest.isStateful) {
-        const searchKey = this.getLiveModuleKey(liveModule.manifest);
-        this.statelessLiveModules.delete(searchKey);
-        if (!this.statelessLiveModulesClearIdSet.has(searchKey)) {
-          this.statelessLiveModulesClearIdSet.add(searchKey);
-          this.statelessLiveModulesClearQueue.set(searchKey, {
-            moduleId: id,
-            lastExecuteDate: Date.now(),
-          });
-        }
-      }
     }
   }
 
-  public getStatelessLiveModuleId(
+  public getStatelessLiveModuleIds(
     name: string,
     version: number,
-  ): string | undefined {
-    return this.statelessLiveModules.get(`${name}_${version}`);
+  ): string[] | undefined {
+    return this.modulesIndex.get(`${name}_${version}`);
   }
 
   public async callLiveModuleFunction({
@@ -505,25 +465,21 @@ export class LiveModuleManager {
     };
   }) {
     const liveModule = this.getLiveModuleOrThrow(moduleId);
-    if (!liveModule.manifest.isStateful) {
-      throw new Error('callLiveModule is only for stateful live module');
-    }
-
     // Stateful module TTL keepalive (keeps original call-based lifetime extension behavior)
-    this.statefulLiveModulesTTLQueue.set(moduleId, {
+    this.statefulTTLMap.set(moduleId, {
       moduleId,
       lastExecuteDate: Date.now(),
     });
 
-    const moduleKey = this.getLiveModuleKey(liveModule.manifest);
-    if (!this.statelessLiveModulesClearIdSet.has(moduleKey)) {
-      this.statelessLiveModulesClearIdSet.add(moduleKey);
-      this.statelessLiveModulesClearQueue.set(moduleKey, {
+    const moduleKey = this.getModuleKey(liveModule.manifest);
+    if (!this.statelessCleanupKeys.has(moduleKey)) {
+      this.statelessCleanupKeys.add(moduleKey);
+      this.statelessCleanupQueue.set(moduleKey, {
         moduleId,
         lastExecuteDate: Date.now(),
       });
     } else {
-      const existing = this.statelessLiveModulesClearQueue.get(moduleKey);
+      const existing = this.statelessCleanupQueue.get(moduleKey);
       if (existing) {
         existing.lastExecuteDate = Date.now();
       }
@@ -548,14 +504,7 @@ export class LiveModuleManager {
     name: string;
   }) {
     const liveModule = this.getLiveModuleOrThrow(moduleId);
-    if (!liveModule.manifest.isStateful) {
-      throw new Error('getLiveModuleValue is only for stateful live module');
-    }
-    const response = await this.sendWorkerMessage(
-      liveModule.workerId,
-      WorkerMessageEnum.GetValueOfLiveModule,
-      { name },
-    );
+    const response = await this.sendWorkerMessage(liveModule.workerId, WorkerMessageEnum.GetValueOfLiveModule, { name });
     return response.payload;
   }
 
@@ -569,39 +518,29 @@ export class LiveModuleManager {
     value: any;
   }) {
     const liveModule = this.getLiveModuleOrThrow(moduleId);
-    if (!liveModule.manifest.isStateful) {
-      throw new Error('setLiveModuleValue is only for stateful live module');
-    }
-    await this.sendWorkerMessage(
-      liveModule.workerId,
-      WorkerMessageEnum.SetValueOfLiveModule,
-      { name, value },
-    );
+    await this.sendWorkerMessage(liveModule.workerId, WorkerMessageEnum.SetValueOfLiveModule, { name, value });
     return true;
   }
 
   public async clean() {
-    clearInterval(this.statelessLiveModulesClearIntervalId!);
+    clearInterval(this.statelessCleanupIntervalId!);
     await Promise.allSettled(
-      [...this.liveModules.keys()].map((moduleId) =>
-        this.removeLiveModule(moduleId),
-      ),
+      [...this.modulesById.keys()].map((moduleId) => this.removeLiveModule(moduleId)),
     );
 
-    this.workers.forEach((worker) => {
+    this.workerPool.forEach((worker) => {
       try {
         worker.terminate();
       } catch {}
     });
 
-    this.workers.clear();
-    this.workerState.clear();
-    this.pendingRequests.clear();
-    this.statelessLiveModulesClearIdSet.clear();
-    this.statelessLiveModulesClearQueue.clear();
-    this.statefulLiveModulesTTLQueue.clear();
-    this.liveModules.clear();
-    this.liveModulesSearchMap.clear();
-    this.statelessLiveModules.clear();
+    this.workerPool.clear();
+    this.workerStatus.clear();
+    this.inflightRequests.clear();
+    this.statelessCleanupKeys.clear();
+    this.statelessCleanupQueue.clear();
+    this.statefulTTLMap.clear();
+    this.modulesById.clear();
+    this.modulesIndex.clear();
   }
 }

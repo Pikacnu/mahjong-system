@@ -1,12 +1,9 @@
-import type {
-  RunnerCreateLiveModulePayload,
-  MethodInfo,
-  ResourceSource,
-} from 'utils';
+import type { CreateLiveModuleRequest } from 'proto/src/generated/services/runner';
+import type { MethodInfo, ResourceSource } from 'utils';
 
 export type RunnerGateway = {
   createLiveModule(
-    payload: RunnerCreateLiveModulePayload,
+    payload: CreateLiveModuleRequest,
   ): Promise<{ moduleId: string }>;
   callLiveModuleFn(payload: {
     moduleId: string;
@@ -19,6 +16,10 @@ export type RunnerGateway = {
     key: string;
     value: unknown;
   }): Promise<void>;
+  getLiveModuleValue(payload: {
+    moduleId: string;
+    key: string;
+  }): Promise<unknown>;
 };
 
 export type StorageGateway = {

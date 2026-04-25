@@ -17,7 +17,6 @@ export enum PluginCapability {
   Decision = 'decision',
   Query = 'query',
   Command = 'command',
-  Stateful = 'stateful',
 }
 
 export type PluginManifest = {
@@ -34,12 +33,10 @@ export type PluginManifest = {
 // runner.proto::CreateLiveModuleRequest compatibility
 export type PluginLiveRuntimeConfig =
   | {
-      isStateful: true;
       defaultState: unknown;
       ttlMs?: number;
     }
   | {
-      isStateful: false;
       ttlMs?: number;
     };
 
@@ -48,6 +45,7 @@ export enum LifecycleHookType {
   Restore = 'onRestore',
   GameStart = 'onGameStart',
   RoundStart = 'onRoundStart',
+  PlayerGetsTile = 'onPlayerGetsTile',
   RoundEnd = 'onRoundEnd',
   GameEnd = 'onGameEnd',
   Unload = 'onUnload',
@@ -106,6 +104,10 @@ export type PluginHookPayloads = {
   [LifecycleHookType.RoundStart]: {
     roundIndex: number;
   };
+  [LifecycleHookType.PlayerGetsTile]: {
+    playerId: string;
+    tile: MahjongTile;
+  };
   [LifecycleHookType.RoundEnd]: {
     roundIndex: number;
   };
@@ -156,33 +158,110 @@ export type PluginHookContext<StorageType, PayloadType> = {
 };
 
 export enum GameStatusPatches {
-  PlayerHandTiles,
-  PlayerDrawedTiles,
-  PlayerActionTiles,
   RedDoraTile,
   UraDoraTile,
-  PlayerScores,
   GameStats,
+  RoundEnd,
+  GameEnd,
 }
 
-export type GameStatsPatch = {
-  patchesType: GameStatusPatches.GameStats;
-  stats: Record<string, unknown>;
-  isGameStatsPatch: true;
+export enum PlayerStatusPatches {
+  PlayerHandTile,
+  PlayerHandTiles,
+  PlayerDrawedTiles, // unknown usage
+  PlayerActionTiles, // unknown usage
+  PlayerScores,
+}
+
+export type PatchesType = GameStatusPatches | PlayerStatusPatches;
+
+export type GameStatsPatch<
+  T extends keyof PatchesArgument = keyof PatchesArgument,
+> = T extends any
+  ? {
+      patchType: T;
+      data: PatchesArgument[T];
+    }
+  : never;
+
+export enum PatchActionType {
+  Update,
+  Add,
+  Remove,
+}
+
+export interface PlayerStatusPatchesArgument {
+  [PlayerStatusPatches.PlayerHandTile]: {
+    playerId: string;
+    handTile: MahjongTile;
+    replaceTile?: MahjongTile;
+  };
+  [PlayerStatusPatches.PlayerHandTiles]: {
+    playerId: string;
+    handTiles: MahjongTile[];
+  };
+  [PlayerStatusPatches.PlayerDrawedTiles]: {
+    playerId: string;
+    drawedTiles: MahjongTile[];
+  };
+  [PlayerStatusPatches.PlayerActionTiles]: {
+    playerId: string;
+    actionTiles: MahjongTile[];
+  };
+  [PlayerStatusPatches.PlayerScores]: {
+    playerId: string;
+    delta: number;
+  };
+}
+
+export interface GameStatusPatchesArgument {
+  [GameStatusPatches.RedDoraTile]: {
+    redDoraTile: MahjongTile;
+    action: Exclude<PatchActionType, PatchActionType.Remove>;
+  };
+  [GameStatusPatches.UraDoraTile]: {
+    uraDoraTile: MahjongTile & { isOpen: boolean };
+    action: Exclude<PatchActionType, PatchActionType.Remove>;
+  };
+  [GameStatusPatches.GameStats]: {
+    stats: Record<string, unknown>;
+  };
+  [GameStatusPatches.GameEnd]: {
+    finalPlayerScores: Record<string, number>;
+  };
+}
+
+export type PatchesArgument = GameStatusPatchesArgument &
+  PlayerStatusPatchesArgument;
+
+export enum StoragePatchType {
+  Global,
+  Plugin,
+}
+
+export type StoragePatch<T> = {
+  type: StoragePatchType;
+  key: keyof T;
+  value: T[keyof T];
 };
 
 export type PluginHookResult<
   StorageType,
   ActionType = PluginActionDefinition,
-> = {
-  accepted?: boolean;
-  reason?: string;
-  storage?: StorageType;
-  patch?: Partial<StorageType>;
-  gameStatsPatch?: GameStatsPatch[];
-  availableActions?: readonly ActionType[];
-  stopPropagation?: boolean;
-};
+> =
+  | {
+      pluginStorage?: StorageType;
+      storagePatch?: StoragePatch<StorageType>;
+      gameStatsPatch?: GameStatsPatch[];
+      pluginAction?: readonly ActionType[];
+      stopPropagation?: boolean;
+      reject?: boolean;
+      // reject work as stopPropagation but also indicates the action is rejected,
+      // which can be used by caller to show feedback to user.
+      // For exp : Furtien can reject a Ron declaration if it determines the player is not in Tenpai,
+      // and the game server can show "Ron declaration rejected" feedback to user based on the reject flag.
+    }
+  | undefined;
 
 export type WithPluginId<T> = T & {
   pluginId: string;
@@ -208,9 +287,17 @@ export type PluginInstance<StorageType> = {
   defaultStore: StorageType;
   runtime: PluginLiveRuntimeConfig;
   implementation: {
-    lifecycle?: PluginLifecycleHooks<StorageType>;
-    decision?: PluginDecisionHooks<StorageType>;
+    lifecycle?: PluginLifecycleHooks<StorageType> & {
+      ReadGlobalStorageValues?: string[];
+      SetGlobalStorageValues?: string[];
+    };
+    decision?: PluginDecisionHooks<StorageType> & {
+      ReadGlobalStorageValues?: string[];
+      SetGlobalStorageValues?: string[];
+    };
   };
+  usedGlobalStorageKeys: readonly string[];
+  globalStorageDefaultValues: Record<string, unknown>;
   hooks: readonly PluginHookDefinition[];
 };
 
@@ -225,7 +312,6 @@ export type LiveModuleFunctionArgs = {
 
 export type RunnerCreateLiveModulePayload = {
   manifest: MethodInfo;
-  isStateful?: boolean;
 };
 
 export type RunnerCallLiveModulePayload = {

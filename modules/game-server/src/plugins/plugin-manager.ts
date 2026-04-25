@@ -15,6 +15,9 @@ import {
   type RunnerLiveModuleBinding,
   type WithPluginId,
   GameStatusPatches,
+  type PluginActionDefinition,
+  type StoragePatch,
+  StoragePatchType,
 } from 'utils';
 import type { RunnerGateway, StorageGateway } from '../type/gateway';
 
@@ -34,13 +37,15 @@ export class PluginManager {
       pluginId: string;
     }[]
   >();
+  private globalStorageValues = new Map<string, unknown>();
+  private globalStorageValuesStoresPriority: Map<string, number> = new Map();
 
   constructor(
     private readonly runner: RunnerGateway,
     private readonly storage?: StorageGateway,
   ) {}
 
-  public addPlugin<StorageType>(
+  public async addPlugin<StorageType>(
     plugin: PluginInstance<StorageType>,
     priority = 0,
   ) {
@@ -53,11 +58,64 @@ export class PluginManager {
       priority,
       instance: plugin as PluginInstance<unknown>,
     });
-    this.pluginStorages.set(pluginId, plugin.defaultStore);
+
+    // Initialize plugin storage: prefer persisted/default from function-storage when available
+    let initialStore: unknown = plugin.defaultStore ?? {};
+    if (this.storage && plugin.manifest?.methodInfo) {
+      try {
+        const definition = await this.storage.getPluginDefinition({
+          methodInfo: plugin.manifest.methodInfo,
+          resourceSource: plugin.manifest.resourceSource || ResourceSource.USER,
+        });
+        initialStore = this.normalizeDefaultStore(definition.defaultStore);
+      } catch (err) {
+        // If storage call fails, fallback to plugin-provided defaultStore
+        // Keep behavior non-fatal to avoid breaking plugin registration
+        // eslint-disable-next-line no-console
+        console.warn(
+          `Failed to load plugin defaultStore for ${pluginId}, using provided defaultStore.`,
+          err,
+        );
+        initialStore = plugin.defaultStore ?? {};
+      }
+    }
+
+    this.pluginStorages.set(pluginId, initialStore);
+
+    if (plugin.globalStorageDefaultValues && plugin.usedGlobalStorageKeys) {
+      for (const [key, value] of Object.entries(
+        plugin.globalStorageDefaultValues,
+      )) {
+        if (!plugin.usedGlobalStorageKeys.includes(key)) {
+          continue;
+        }
+        this.replaceGlobalStorageByPriority(key, value, priority);
+      }
+    }
 
     for (const hook of plugin.hooks) {
       this.registerHook(pluginId, hook, priority);
     }
+  }
+
+  public replaceGlobalStorageByPriority(
+    key: string,
+    value: unknown,
+    priority: number,
+  ) {
+    const currentPriority = this.globalStorageValuesStoresPriority.get(key);
+    if (currentPriority === undefined || priority > currentPriority) {
+      this.globalStorageValues.set(key, value);
+      this.globalStorageValuesStoresPriority.set(key, priority);
+    }
+  }
+
+  public setGlobalStorageValue(key: string, value: unknown) {
+    this.globalStorageValues.set(key, value);
+  }
+
+  public getGlobalStorageValue(key: string): unknown {
+    return this.globalStorageValues.get(key);
   }
 
   public async removePlugin(pluginId: string) {
@@ -110,6 +168,14 @@ export class PluginManager {
       .map((handler) => handler.pluginId);
   }
 
+  private getHookPipelineWithPriority(
+    hookType: HookType,
+  ): { pluginId: string; priority: number }[] {
+    return (this.hookHandlers.get(hookType) || []).sort(
+      (a, b) => a.priority - b.priority,
+    );
+  }
+
   public async runHook<StorageType, HookName extends HookType>({
     hook,
     requestId,
@@ -134,6 +200,54 @@ export class PluginManager {
       if (!hookDef) continue;
 
       const storage = this.pluginStorages.get(pluginId) as StorageType;
+
+      // if (plugin.runtime.isStateful) {
+      //   // get Global Storage Values for the plugin
+      //   const injectionValues = plugin.usedGlobalStorageKeys.map((key) => ({
+      //     key,
+      //     value: this.getGlobalStorageValue(key),
+      //   }));
+      //   // Get __state__ value from the plugin
+      //   const values = (await this.runner.getLiveModuleValue({
+      //     moduleId: pluginId,
+      //     key: '__state__',
+      //   })) as StorageType | undefined;
+      //   const mergedStorage = { ...storage, ...values };
+      //   if (values) {
+      //     this.pluginStorages.set(pluginId, {
+      //       ...storage,
+      //       ...mergedStorage,
+      //     });
+      //   }
+      //   // Inject global storage values into plugin storage with a special key
+      //   await this.runner.setLiveModuleValue({
+      //     moduleId: pluginId,
+      //     key: '__state__',
+      //     value: injectionValues,
+      //   });
+      // } else {
+      //   // For non-stateful plugins, we can directly inject global storage values into the plugin storage before executing the hook, and clear them afterward to avoid unintended side effects between hooks
+      //   const injectionValues = plugin.usedGlobalStorageKeys.reduce(
+      //     (acc, key) => {
+      //       acc[key] = this.getGlobalStorageValue(key);
+      //       return acc;
+      //     },
+      //     {} as Record<string, unknown>,
+      //   );
+      //   const mergedStorage = { ...storage, ...injectionValues };
+      //   this.pluginStorages.set(pluginId, mergedStorage);
+      // }
+
+      const injectionValues = plugin.usedGlobalStorageKeys.reduce(
+        (acc, key) => {
+          acc[key] = this.getGlobalStorageValue(key);
+          return acc;
+        },
+        {} as Record<string, unknown>,
+      );
+      const mergedStorage = { ...storage, ...injectionValues };
+      this.pluginStorages.set(pluginId, mergedStorage);
+
       const implementationResult = await this.executeLocalHook(plugin, hook, {
         requestId,
         payload,
@@ -147,17 +261,16 @@ export class PluginManager {
         results.push({
           ...implementationResult,
           pluginId,
-        });
-        if (implementationResult.storage !== undefined) {
-          this.pluginStorages.set(pluginId, implementationResult.storage);
-        } else if (implementationResult.patch) {
-          this.pluginStorages.set(pluginId, {
-            ...(storage as Record<string, unknown>),
-            ...(implementationResult.patch as Record<string, unknown>),
-          } as StorageType);
-        }
+        } as WithPluginId<PluginHookResult<StorageType>>);
         if (implementationResult.stopPropagation) {
           break;
+        }
+        if (
+          implementationResult.storagePatch &&
+          Array.isArray(implementationResult.storagePatch) &&
+          implementationResult.storagePatch.length > 0
+        ) {
+          this.applyStoragePatch(implementationResult.storagePatch, plugin);
         }
         continue;
       }
@@ -175,18 +288,14 @@ export class PluginManager {
       if (runnerResult === undefined) {
         continue;
       }
+
       results.push({
         ...runnerResult,
         pluginId,
       } as WithPluginId<PluginHookResult<StorageType>>);
-      if (runnerResult.storage !== undefined) {
-        this.pluginStorages.set(pluginId, runnerResult.storage);
-      }
-      if (runnerResult.patch) {
-        this.pluginStorages.set(pluginId, {
-          ...(storage as Record<string, unknown>),
-          ...(runnerResult.patch as Record<string, unknown>),
-        } as StorageType);
+
+      if (runnerResult.stopPropagation) {
+        break;
       }
     }
 
@@ -296,23 +405,19 @@ export class PluginManager {
           registered.instance.manifest.resourceSource || ResourceSource.USER,
       });
       dependencies = definition.dependencies;
-      if (definition.isStateful) {
-        resolvedRuntime = {
-          isStateful: true,
-          defaultState: this.normalizeDefaultStore(definition.defaultStore),
-          ttlMs: runtime.ttlMs,
-        };
-      } else {
-        resolvedRuntime = {
-          isStateful: false,
-          ttlMs: runtime.ttlMs,
-        };
-      }
+
+      resolvedRuntime = {
+        defaultState: this.normalizeDefaultStore(definition.defaultStore),
+        ttlMs: runtime.ttlMs,
+      };
+
+      resolvedRuntime = {
+        ttlMs: runtime.ttlMs,
+      };
     }
 
     const created = await this.runner.createLiveModule({
       manifest,
-      isStateful: resolvedRuntime.isStateful,
     });
 
     const binding: RunnerLiveModuleBinding = {
@@ -325,15 +430,64 @@ export class PluginManager {
 
     this.runnerPluginBinding.set(pluginId, binding);
 
-    if (resolvedRuntime.isStateful) {
-      await this.runner.setLiveModuleValue({
-        moduleId: created.moduleId,
-        key: '__state__',
-        value: resolvedRuntime.defaultState,
-      });
-    }
-
     return binding;
+  }
+
+  private validValue(value: unknown, source: unknown): boolean {
+    if (typeof source === 'object' && source !== null) {
+      if (typeof value !== 'object' || value === null) {
+        return false;
+      }
+      for (const key in source as Record<string, unknown>) {
+        if (!(key in (value as Record<string, unknown>))) {
+          return false;
+        }
+        if (
+          !this.validValue(
+            (value as Record<string, unknown>)[key],
+            (source as Record<string, unknown>)[key],
+          )
+        ) {
+          return false;
+        }
+      }
+      return true;
+    }
+    return typeof value === typeof source;
+  }
+
+  private applyStoragePatch<T extends unknown>(
+    patches: StoragePatch<T>[],
+    plugin: PluginInstance<T>,
+  ) {
+    for (const patch of patches) {
+      let currentValue: unknown;
+      const keyString = patch.key.toString();
+      switch (patch.type) {
+        case StoragePatchType.Global: {
+          if (!plugin.usedGlobalStorageKeys.includes(keyString)) {
+            console.error('Key Not Registeried By Plugin');
+            break;
+          }
+          currentValue = this.getGlobalStorageValue(keyString);
+          if (this.validValue(patch.value, currentValue)) {
+            this.setGlobalStorageValue(keyString, patch.value);
+          } else {
+            console.error('Invalid Value Type For Global Storage');
+          }
+          break;
+        }
+        case StoragePatchType.Plugin: {
+          currentValue = this.pluginStorages.get(patch.key as string);
+          if (this.validValue(patch.value, currentValue)) {
+            this.pluginStorages.set(patch.key as string, patch.value);
+          } else {
+            console.error('Invalid Value Type For Plugin Storage');
+          }
+          break;
+        }
+      }
+    }
   }
 
   private normalizeDefaultStore(defaultStore: unknown): unknown {

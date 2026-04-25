@@ -32,7 +32,6 @@ message FunctionResponse {
 // including its name and version. The runner fetches code from storage.
 message CreateLiveModuleRequest {
   LiveModuleManifest manifest = 1;
-  optional bool is_stateful = 2;
 }
 
 // LiveModuleManifest represents the metadata for a live module,
