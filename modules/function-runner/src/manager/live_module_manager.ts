@@ -1,5 +1,8 @@
 import { randomUUIDv7 } from 'bun';
-import { GetResourceDataRequest } from 'proto/src/generated/services/storage';
+import {
+  GetResourceDataRequest,
+  GetResourceDataResponse,
+} from 'proto/src/generated/services/storage';
 import { storageServiceClient } from '../grpc/storage-client';
 import { unaryCall } from 'proto';
 import {
@@ -335,14 +338,14 @@ export class LiveModuleManager {
 
     const fetchedModules = await Promise.all(
       missingModulesToFetch.map(async (dep) => {
-        const resourceData = await unaryCall(
+        const resourceData = (await unaryCall(
           storageServiceClient.getResourcesData.bind(storageServiceClient),
           {
             resources: {
               methodInfo: dep,
             },
           } as GetResourceDataRequest,
-        );
+        )) as GetResourceDataResponse;
 
         return {
           ...resourceData,
