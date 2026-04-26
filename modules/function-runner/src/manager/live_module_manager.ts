@@ -113,16 +113,20 @@ export class LiveModuleManager {
         this.statefulTTLMap.delete(key);
       });
 
-      this.statelessCleanupQueue.forEach(({ moduleId, lastExecuteDate }, key) => {
-        if (Math.abs(currentTime - lastExecuteDate) < this.statelessMaxIdleMs) {
-          return;
-        }
-        this.removeLiveModule(moduleId).catch(() => {
-          // no-op
-        });
-        this.statelessCleanupQueue.delete(key);
-        this.statelessCleanupKeys.delete(key);
-      });
+      this.statelessCleanupQueue.forEach(
+        ({ moduleId, lastExecuteDate }, key) => {
+          if (
+            Math.abs(currentTime - lastExecuteDate) < this.statelessMaxIdleMs
+          ) {
+            return;
+          }
+          this.removeLiveModule(moduleId).catch(() => {
+            // no-op
+          });
+          this.statelessCleanupQueue.delete(key);
+          this.statelessCleanupKeys.delete(key);
+        },
+      );
     }, this.statelessMaxIdleMs / 10);
   }
 
@@ -154,7 +158,10 @@ export class LiveModuleManager {
     return worker;
   }
 
-  private getModuleKey({ name, version }: Pick<LiveModuleManifest, 'name' | 'version'>): string {
+  private getModuleKey({
+    name,
+    version,
+  }: Pick<LiveModuleManifest, 'name' | 'version'>): string {
     return `${name}_${version}`;
   }
 
@@ -219,7 +226,9 @@ export class LiveModuleManager {
       this.statefulTTLMap.delete(moduleId);
       const searchKey = module.searchKey;
       const currentIds = this.modulesIndex.get(searchKey) || [];
-      const updatedIds = currentIds.filter((currentId) => currentId !== moduleId);
+      const updatedIds = currentIds.filter(
+        (currentId) => currentId !== moduleId,
+      );
       if (updatedIds.length === 0) {
         this.modulesIndex.delete(searchKey);
       } else {
@@ -254,7 +263,11 @@ export class LiveModuleManager {
       const timeoutId = setTimeout(() => {
         if (this.inflightRequests.has(id)) {
           this.inflightRequests.delete(id);
-          reject(new Error(`Live worker request timeout after ${this.requestTimeoutMs}ms`));
+          reject(
+            new Error(
+              `Live worker request timeout after ${this.requestTimeoutMs}ms`,
+            ),
+          );
         }
       }, this.requestTimeoutMs);
 
@@ -504,7 +517,11 @@ export class LiveModuleManager {
     name: string;
   }) {
     const liveModule = this.getLiveModuleOrThrow(moduleId);
-    const response = await this.sendWorkerMessage(liveModule.workerId, WorkerMessageEnum.GetValueOfLiveModule, { name });
+    const response = await this.sendWorkerMessage(
+      liveModule.workerId,
+      WorkerMessageEnum.GetValueOfLiveModule,
+      { name },
+    );
     return response.payload;
   }
 
@@ -518,14 +535,20 @@ export class LiveModuleManager {
     value: any;
   }) {
     const liveModule = this.getLiveModuleOrThrow(moduleId);
-    await this.sendWorkerMessage(liveModule.workerId, WorkerMessageEnum.SetValueOfLiveModule, { name, value });
+    await this.sendWorkerMessage(
+      liveModule.workerId,
+      WorkerMessageEnum.SetValueOfLiveModule,
+      { name, value },
+    );
     return true;
   }
 
   public async clean() {
     clearInterval(this.statelessCleanupIntervalId!);
     await Promise.allSettled(
-      [...this.modulesById.keys()].map((moduleId) => this.removeLiveModule(moduleId)),
+      [...this.modulesById.keys()].map((moduleId) =>
+        this.removeLiveModule(moduleId),
+      ),
     );
 
     this.workerPool.forEach((worker) => {
