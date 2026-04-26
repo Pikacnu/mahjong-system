@@ -20,6 +20,12 @@ import {
 } from 'utils';
 import { shuffleArray } from 'utils';
 import z from 'zod';
+// Plugin hook result schema (defensive parsing for unknown plugin returns)
+const PluginHookResultItem = z.object({
+  reject: z.boolean().optional(),
+  pluginAction: z.array(z.number()).optional(),
+  gameStatsPatch: z.array(z.any()).optional(),
+});
 import { Table } from './table';
 import {
   createRunnerGateway,
@@ -29,7 +35,11 @@ import {
 import { Player } from './player';
 import type { ActionSharedData, ActionSharedDataPlayersData } from './utils';
 
-export type GameEndCallbackData = {};
+export type GameEndCallbackData = {
+  roundIndex?: number;
+  isMatchEnd?: boolean;
+  tilesRemaining?: number;
+};
 /**
  *
  * Todo:
@@ -38,15 +48,17 @@ export type GameEndCallbackData = {};
  * 3. Score Calculation Logic
  */
 
-export class Game {
+export class Round {
   private roundStatus: MahjongGameRoundStatus =
     MahjongGameRoundStatus.RoundStart;
-  private table: Table = new Table();
-  private players: Map<string, Player> = new Map();
+  private table: Table;
+  private players: Map<string, Player>;
   private playerIdForTurnOrder: Array<string> = [];
   private currentPlayerIndex: number = 0;
   private playerActionTimeLimit: number = 20_000;
   private timeoutHandle: NodeJS.Timeout | null = null;
+  // Processing depth counter to avoid concurrent processing (supports nested internal calls)
+  private processingDepth: number = 0;
 
   private modulePluginManager: PluginManager | null = null;
 
@@ -61,46 +73,34 @@ export class Game {
   private pendingPlayerDefaultActions: Map<string, TimeoutActionEvent> =
     new Map();
   private resolvedPlayerActions: Map<string, PlayerAction | null> = new Map();
-  private gameEndCallback: ((data: GameEndCallbackData) => void) | undefined;
-  private isGameEnded = false;
+  private roundEndCallback: ((data: GameEndCallbackData) => void) | undefined;
+  private isRoundEnded = false;
+
+  private currentWind: number = 0; // 0: East, 1: South, 2: West, 3: North
 
   constructor({
     playerActionTimeLimit = 20_000,
-    runnergRPCClient,
-    storagegRPCClient,
-    gameEndCallback,
+    roundEndCallback,
+    players,
+    table,
+    pluginManager,
   }: {
     playerActionTimeLimit?: number;
-    runnergRPCClient: ReturnType<typeof createRunnerGateway>;
-    storagegRPCClient: ReturnType<typeof createStorageGateway>;
-    gameEndCallback: (data: GameEndCallbackData) => void;
+    pluginManager?: PluginManager;
+    roundEndCallback: (data: GameEndCallbackData) => void;
+    players?: Map<string, Player>;
+    table?: Table;
   }) {
     this.playerActionTimeLimit = playerActionTimeLimit;
-    this.modulePluginManager = new PluginManager(
-      runnergRPCClient,
-      storagegRPCClient,
-    );
-    this.gameEndCallback = gameEndCallback;
+    this.modulePluginManager = pluginManager ?? null;
+    this.roundEndCallback = roundEndCallback;
+    this.players = players ?? new Map();
+    this.table = table ?? new Table();
   }
 
-  public addPlayer(playerId: string): void {
-    if (this.roundStatus !== MahjongGameRoundStatus.RoundStart) {
-      throw new Error('Cannot add player after the game has started');
-    }
-    if (this.players.has(playerId)) {
-      throw new Error('Player already exists in the game');
-    }
-    this.players.set(playerId, new Player());
-    this.table.addPlayer(playerId);
-  }
-
-  public removePlayer(playerId: string): void {
-    if (!this.players.has(playerId)) {
-      throw new Error('Player not found in the game');
-    }
-    this.players.delete(playerId);
-    this.table.removePlayer(playerId);
-  }
+  // Player / table management is performed by the higher-level `Game`.
+  // Round receives references to the players map and table so it can operate
+  // on the same state without owning lifecycle responsibilities.
 
   private async handleRoundStart(): Promise<void> {
     if (this.roundStatus !== MahjongGameRoundStatus.RoundStart) {
@@ -124,6 +124,16 @@ export class Game {
 
   private async handlePlayerGetsTile(): Promise<void> {
     const currentPlayerId = this.getCurrentPlayerId();
+    // ENTRY CHECK: empty tile pile (draw/riichi)
+    // TODO (design note): handle empty tile pile here. Guidance:
+    // - Determine draw/liu-ju rule and whether to stop the round or continue
+    // - Call relevant plugin hooks (e.g., LifecycleHookType.RoundEnd or a dedicated Draw hook)
+    // - Record draw reason and trigger scoring or next round initialization
+    // (Do not implement scoring here; this comment is the entry point guide.)
+    if (this.table.getTilesCount() === 0) {
+      return;
+    }
+
     const tile = this.table.removeTileByIndex(0);
     this.table.addPlayerDrawedTile(currentPlayerId, tile);
 
@@ -138,7 +148,10 @@ export class Game {
       },
     });
 
-    const actions = this.checkPlayerActionType(this.getCurrentPlayer(), tile);
+    const actions = await this.checkPlayerActionType(
+      this.getCurrentPlayer(),
+      tile,
+    );
 
     if (actions.includes(PlayerAction.Tsumo)) {
       this.pendingPlayerActions.set(currentPlayerId, [PlayerAction.Tsumo]);
@@ -147,7 +160,7 @@ export class Game {
       });
 
       this.roundStatus = MahjongGameRoundStatus.WaitingForPlayerAction;
-      this.createTimeoutHandle(this.playerActionTimeLimit);
+      this.startActionTimeout(this.playerActionTimeLimit);
       await this.next({ requestId: this.currentRequestId });
       return;
     }
@@ -160,32 +173,64 @@ export class Game {
     const didntRespondedPlayerIds = Array.from(
       this.pendingPlayerActions.keys(),
     ).filter((playerId) => !this.resolvedPlayerActions.has(playerId));
-    didntRespondedPlayerIds.forEach((playerId) => {
+
+    for (const playerId of didntRespondedPlayerIds) {
       const defaultAction = this.pendingPlayerDefaultActions.get(playerId);
       switch (defaultAction?.action) {
         case TimeoutAction.Skip: {
-          // 逾時後不執行額外動作，保留現況並交由外部流程決定是否進入下一個事件。
+          // Timeout: no extra action, mark as resolved (null indicates skipped)
+          this.resolvedPlayerActions.set(playerId, null);
           break;
         }
         case TimeoutAction.DrawTile: {
-          const currentPlayer = this.getCurrentPlayer();
-          // 補抽時應依 payload 指定的 index 或 tile 取回玩家牌，再同步到桌面與手牌狀態。
-          const tile =
-            defaultAction.payload && 'tile' in defaultAction.payload
-              ? currentPlayer.removeHandTile(defaultAction.payload.tile)
-              : currentPlayer.removeHandTileByIndex(
-                  defaultAction.payload && 'index' in defaultAction.payload
-                    ? defaultAction.payload.index
-                    : currentPlayer.getHandTiles().length - 1,
-                );
-          this.table.addPlayerDrawedTile(this.getCurrentPlayerId(), tile);
+          const player = this.getPlayerById(playerId);
+          // On draw by timeout, prefer explicit payload (tile or index). If none provided,
+          // take the last tile from the player's hand as a safe fallback. Real game logic
+          // should be implemented in the rules module.
+          let tile: MahjongTile | undefined;
+          if (defaultAction.payload && 'tile' in defaultAction.payload) {
+            tile = player.removeHandTile(
+              (defaultAction.payload as any).tile as any,
+            );
+          } else {
+            const idx =
+              defaultAction.payload && 'index' in defaultAction.payload
+                ? (defaultAction.payload as any).index
+                : player.getHandTiles().length - 1;
+            tile = player.removeHandTileByIndex(idx);
+          }
+          if (tile) this.table.addPlayerDrawedTile(playerId, tile);
+          this.resolvedPlayerActions.set(playerId, PlayerAction.DrawTile);
           break;
         }
         default: {
-          throw new Error('Invalid timeout action');
+          // Unknown default action: mark as resolved to continue the flow
+          this.resolvedPlayerActions.set(playerId, null);
+          break;
         }
       }
-    });
+    }
+
+    // If all pending players are resolved now, process their actions.
+    const allResolved = Array.from(this.pendingPlayerActions.keys()).every(
+      (id) => this.resolvedPlayerActions.has(id),
+    );
+    if (allResolved) {
+      // Use the same resolution flow as when players actively resolve.
+      for (const [id, action] of this.resolvedPlayerActions.entries()) {
+        // NOTE: reuse existing resolution logic by invoking the resolve hook
+        const player = this.getPlayerById(id);
+        await this.runHook({
+          hook: ActionHookType.ResolveAction,
+          requestId: this.currentRequestId,
+          payload: {
+            action: action as PlayerAction,
+            playerId: id,
+            tiles: player.getHandTiles(),
+          },
+        });
+      }
+    }
   }
 
   // private handleWaitingForPlayerDrawTile(currentDrawTile: MahjongTile): void {
@@ -200,11 +245,32 @@ export class Game {
   //   this.next({ requestId: this.currentRequestId });
   // }
 
-  private checkPlayerActionType(
+  private static playerActionNumToEnum(
+    action: number,
+  ): PlayerAction | undefined {
+    const actions = [
+      PlayerAction.DrawTile,
+      // ---
+      PlayerAction.Chi,
+      PlayerAction.Pon,
+      PlayerAction.Kan,
+      // ---
+      PlayerAction.Ron,
+      PlayerAction.Riichi,
+      PlayerAction.Tsumo,
+    ];
+    if (action < 0 || action > actions.length - 1) {
+      console.error('Invalid player action number:', action);
+      return undefined;
+    }
+    return actions[action];
+  }
+
+  private async checkPlayerActionType(
     player: Player = this.getCurrentPlayer(),
     currentDrawTile: MahjongTile | null,
-  ): PlayerAction[] {
-    this.runHook({
+  ): Promise<PlayerAction[]> {
+    const actionResults = await this.runHook({
       hook: ActionHookType.EvaluateAvailableActions,
       requestId: this.currentRequestId,
       payload: {
@@ -214,21 +280,42 @@ export class Game {
           : player.getHandTiles(),
       },
     });
-    // 這裡應檢查當前摸到的牌是否構成胡牌、吃、碰、槓等合法行動；之後可再拆成獨立規則模組。
-    return [];
+    if (!actionResults.accepted) {
+      return [];
+    }
+    return actionResults.results
+      .filter(
+        (
+          result,
+        ): result is {
+          pluginAction: number[];
+        } => {
+          const target = result as any;
+          return 'pluginAction' in target && Array.isArray(target.pluginAction);
+        },
+      )
+      .flatMap((result) => result.pluginAction || [])
+      .map((actionNum) => Round.playerActionNumToEnum(actionNum))
+      .filter((action): action is PlayerAction => action !== undefined);
   }
 
   private createTimeoutHandle(
     timeout: number,
     ...args: Parameters<typeof this.handleTimeoutAction>
   ): void {
+    // Deprecated helper: delegate to startActionTimeout for safer binding
+    this.startActionTimeout(timeout);
+  }
+
+  private startActionTimeout(timeout: number): void {
     if (this.timeoutHandle) {
       clearTimeout(this.timeoutHandle);
     }
-    this.timeoutHandle = setTimeout(
-      this.handleTimeoutAction.bind(this, ...args),
-      timeout,
-    );
+    this.timeoutHandle = setTimeout(() => {
+      void this.handleTimeoutAction().catch((err) => {
+        console.error('Error in handleTimeoutAction:', err);
+      });
+    }, timeout);
   }
 
   private async handleResolvingPlayerAction({
@@ -254,30 +341,33 @@ export class Game {
       return;
     }
     for (const [id, action] of this.resolvedPlayerActions.entries()) {
+      const player = this.getPlayerById(id);
       switch (action) {
         case PlayerAction.Tsumo: {
+          // On tsumo: lock winning hand, record source and hand composition, then proceed to scoring.
           await this.runHook({
             hook: ActionHookType.ResolveAction,
             requestId: this.currentRequestId,
             payload: {
               action: PlayerAction.Tsumo,
               playerId: id,
-              tiles: this.getCurrentPlayer().getHandTiles(),
+              tiles: player.getHandTiles(),
             },
           });
-          // 自摸時應立即鎖定和牌結果、記錄來源與牌型，並推進到結算流程。
           break;
         }
         case PlayerAction.DrawTile: {
+          // Draw tile resolution: plugins may act upon the player's current hand.
           await this.runHook({
             hook: ActionHookType.ResolveAction,
             requestId: this.currentRequestId,
             payload: {
               action: PlayerAction.DrawTile,
               playerId: id,
-              tiles: this.getCurrentPlayer().getHandTiles(),
+              tiles: player.getHandTiles(),
             },
           });
+          // TODO: if this.currentDrawTile is relevant, add to player's hand here according to rules.
           break;
         }
         case PlayerAction.Ron: {
@@ -287,23 +377,23 @@ export class Game {
             payload: {
               action: PlayerAction.Ron,
               playerId: id,
-              tiles: this.getCurrentPlayer().getHandTiles(),
+              tiles: player.getHandTiles(),
             },
           });
-          // 榮和時應鎖定放槍者、紀錄和牌來源，並終止後續吃碰槓判定。
+          // On ron: lock the result, record the discarder, and stop other reaction checks.
           break;
         }
         case PlayerAction.Chi: {
-          this.runHook({
+          await this.runHook({
             hook: ActionHookType.ResolveAction,
             requestId: this.currentRequestId,
             payload: {
               action: PlayerAction.Chi,
               playerId: id,
-              tiles: this.getCurrentPlayer().getHandTiles(),
+              tiles: player.getHandTiles(),
             },
           });
-          // 吃牌時應驗證是否為合法下家反應，並扣除對應牌組後要求玩家補打一張牌。
+          // TODO: validate chi (must be next player), remove tiles from hand and update melds.
           break;
         }
         case PlayerAction.Pon: {
@@ -313,10 +403,10 @@ export class Game {
             payload: {
               action: PlayerAction.Pon,
               playerId: id,
-              tiles: this.getCurrentPlayer().getHandTiles(),
+              tiles: player.getHandTiles(),
             },
           });
-          // 碰牌時應驗證三張同牌成立，更新副露與手牌，並切回出牌要求。
+          // TODO: validate pon (triplet), update melds and hand state.
           break;
         }
         case PlayerAction.Kan: {
@@ -326,10 +416,10 @@ export class Game {
             payload: {
               action: PlayerAction.Kan,
               playerId: id,
-              tiles: this.getCurrentPlayer().getHandTiles(),
+              tiles: player.getHandTiles(),
             },
           });
-          // 槓牌時應依明槓、暗槓、加槓的型態處理，並進入補牌或結算分支。
+          // TODO: handle open/closed/add kan flows and supplement draws.
           break;
         }
         case PlayerAction.Riichi: {
@@ -339,14 +429,15 @@ export class Game {
             payload: {
               action: PlayerAction.Riichi,
               playerId: id,
-              tiles: this.getCurrentPlayer().getHandTiles(),
+              tiles: player.getHandTiles(),
             },
           });
+          // TODO: mark riichi, deduct stick and continue next flows.
           break;
         }
         default: {
-          // this should never happen since we only set allowed action to player
-          throw new Error('Invalid resolved player action');
+          // null indicates skip/timeout — nothing to do.
+          break;
         }
       }
     }
@@ -358,13 +449,18 @@ export class Game {
       this.timeoutHandle = null;
     }
 
-    await this.modulePluginManager?.runHook({
+    // Notify plugins of round end and allow them to apply patches
+    await this.runHook({
       hook: LifecycleHookType.RoundEnd,
       requestId: this.currentRequestId,
       payload: {
         roundIndex: this.roundIndex,
       },
     });
+
+    if (this.table.getTilesCount() === 0) {
+      this.isRoundEnded = true;
+    }
 
     // Reset Player Action Handle Properties
     this.pendingPlayerActions.clear();
@@ -375,16 +471,28 @@ export class Game {
 
     // Increase round index
     this.roundIndex += 1;
+    this.currentWind = (this.currentWind + 1) % 4;
     if (this.table.getTilesCount() !== 0) {
-      // 回合未結束時，這裡應執行結算前準備，例如計分、整理流局原因與初始化下一局狀態。
+      // If the tile wall is not empty, prepare for the next round:
+      // - perform scoring preparation, collect draw reasons, and initialize next round state
       this.roundStatus = MahjongGameRoundStatus.RoundStart;
       this.next({ requestId: this.currentRequestId });
     }
-    // 若牌堆已空，這裡應結束整局遊戲並通知外部系統進入最終結算或結果顯示。
+    // If the tile wall is empty, the match should be finalized (end of game),
+    // and external systems should be notified to show final results or scoring.
 
-    if (this.isGameEnded) {
-      this.gameEndCallback!({});
+    if (this.isRoundEnded) {
+      this.roundEndCallback!({
+        roundIndex: this.roundIndex,
+        isMatchEnd: this.isRoundEnded,
+        tilesRemaining: this.table.getTilesCount(),
+      });
     }
+  }
+
+  private async waitForPlayerAction(): Promise<void> {
+    // Boardcast to frontend
+    // Wip
   }
 
   public async next({
@@ -395,43 +503,55 @@ export class Game {
       throw new Error('Invalid request ID');
     }
 
-    let response: GameNextResponse | null;
-    switch (this.roundStatus) {
-      case MahjongGameRoundStatus.RoundStart: {
-        await this.handleRoundStart();
-        this.currentDrawTile = null;
-        break;
-      }
-
-      case MahjongGameRoundStatus.PlayerGetsTile: {
-        await this.handlePlayerGetsTile();
-        break;
-      }
-
-      case MahjongGameRoundStatus.WaitingForPlayerAction: {
-        break;
-      }
-      case MahjongGameRoundStatus.ResolvingPlayerAction: {
-        const isVaildType = PlayerActionType.safeParse(args);
-        if (!isVaildType.success) {
-          throw new Error('Invalid player action type');
-        }
-        await this.handleResolvingPlayerAction(isVaildType.data);
-        break;
-      }
-      case MahjongGameRoundStatus.RoundEnd: {
-        await this.handleRoundEnd();
-        break;
-      }
-      default: {
-        throw new Error('Invalid round status');
-      }
+    // Prevent concurrent processing from different requests; allow nested internal calls
+    if (this.processingDepth > 0 && requestId !== this.currentRequestId) {
+      throw new Error('Game is already processing');
     }
-    this.currentRequestId = randomUUIDv7();
-    return { requestId: this.currentRequestId };
+    this.processingDepth += 1;
+
+    try {
+      switch (this.roundStatus) {
+        case MahjongGameRoundStatus.RoundStart: {
+          await this.handleRoundStart();
+          this.currentDrawTile = null;
+          break;
+        }
+
+        case MahjongGameRoundStatus.PlayerGetsTile: {
+          await this.handlePlayerGetsTile();
+          break;
+        }
+
+        case MahjongGameRoundStatus.WaitingForPlayerAction: {
+          this.waitForPlayerAction();
+          break;
+        }
+        case MahjongGameRoundStatus.ResolvingPlayerAction: {
+          const isValidType = PlayerActionType.safeParse(args);
+          if (!isValidType.success) {
+            throw new Error('Invalid player action type');
+          }
+          await this.handleResolvingPlayerAction(isValidType.data);
+          break;
+        }
+        case MahjongGameRoundStatus.RoundEnd: {
+          await this.handleRoundEnd();
+          break;
+        }
+        default: {
+          throw new Error('Invalid round status');
+        }
+      }
+      return { requestId: this.currentRequestId };
+    } finally {
+      this.processingDepth -= 1;
+      // Rotate request id after processing (prevents replay)
+      this.currentRequestId = randomUUIDv7();
+    }
   }
 
-  public setCurrentDrawedTile(tile: MahjongTile): void {
+  // Preferred method name
+  public setCurrentDrawnTile(tile: MahjongTile): void {
     this.currentDrawTile = tile;
   }
 
@@ -446,6 +566,10 @@ export class Game {
       throw new Error('Current player not found');
     }
     return player;
+  }
+
+  public getStatus(): MahjongGameRoundStatus {
+    return this.roundStatus;
   }
 
   public getPlayerById(playerId: string): Player {
@@ -527,8 +651,18 @@ export class Game {
     }
   }
 
-  private async CalcScore(): Promise<void> {
+  private async calcScore(): Promise<void> {
+    // Score calculation guidance (not implemented):
+    // - This function should evaluate the current table / player's hands and
+    //   compute score deltas for the round.
+    // - Scoring can be performed by a dedicated scoring engine or via plugins
+    //   (call plugin hooks similar to EvaluateAvailableActions / ResolveAction).
+    // - Once scores are computed, use `patchesReslover` to apply `PlayerScores` patches
+    //   so that player objects are updated consistently.
+    // - Keep the calculation pure (input -> score patches) and apply via patchesReslover.
     const sharedData = await this.buildCurrentPluginRunnerSharedData();
+
+    const winingPlayerId = this.getCurrentPlayerId();
   }
 
   private async runHook<HookName extends HookType>(data: {
@@ -543,22 +677,40 @@ export class Game {
       }
     | {
         accepted: true;
+        results: Array<unknown>;
       }
   > {
-    // hookResult already sorted by plugin priority
-    const hookResult = await this.modulePluginManager?.runHook(data)!;
-    const notAcceptedResult = hookResult.find((result) => result.reject);
+    // Call plugin manager if available; otherwise treat as accepted with no results.
+    const rawResult = this.modulePluginManager
+      ? await this.modulePluginManager.runHook(data)
+      : [];
+
+    const parsedResults: any[] = [];
+    if (Array.isArray(rawResult)) {
+      for (const item of rawResult) {
+        const parsed = PluginHookResultItem.safeParse(item);
+        if (parsed.success) {
+          parsedResults.push(parsed.data);
+        } else {
+          console.warn('Invalid plugin result item, ignoring:', item);
+        }
+      }
+    } else {
+      console.warn('Plugin manager returned non-array hook result:', rawResult);
+    }
+
+    const notAcceptedResult = parsedResults.find(
+      (result: any) => result && result.reject,
+    );
     if (notAcceptedResult) {
       return { accepted: false };
     }
-    const gameStatusPatches = hookResult
-      .filter(
-        (result): result is WithPluginId<PluginHookResult<unknown>> =>
-          'gameStatsPatch' in result,
-      )
-      .flatMap((result) => result.gameStatsPatch || []);
+
+    const gameStatusPatches = parsedResults
+      .filter((result: any) => 'gameStatsPatch' in result)
+      .flatMap((result: any) => result.gameStatsPatch || []);
     this.patchesReslover(gameStatusPatches);
-    return { accepted: true };
+    return { accepted: true, results: parsedResults };
   }
 
   public cleanup() {
@@ -566,8 +718,7 @@ export class Game {
       clearTimeout(this.timeoutHandle);
       this.timeoutHandle = null;
     }
-    this.players.clear();
-    this.table = null as unknown as Table;
+    // Do NOT clear `players` or `table` here — they are owned by `Game`.
     this.playerIdForTurnOrder = [];
     this.currentPlayerIndex = 0;
     this.currentDrawTile = null;
@@ -575,6 +726,246 @@ export class Game {
     this.pendingPlayerDefaultActions.clear();
     this.resolvedPlayerActions.clear();
     this.pluginStateStorage.clear();
+  }
+}
+
+/**
+ * Game is a higher-level container that owns a `Round` instance.
+ * It delegates round-level operations to the current `Round` and exposes
+ * convenience helpers for creating new rounds, delegating `next()` calls,
+ * and centralizing a game-level end callback.
+ */
+export class Game {
+  private currentRound: Round;
+  private playerActionTimeLimit: number;
+  private runnerGateway: ReturnType<typeof createRunnerGateway>;
+  private storageGateway: ReturnType<typeof createStorageGateway>;
+  private gameEndCallback: ((data: GameEndCallbackData) => void) | undefined;
+  // Game owns the players and table so rounds can be restarted easily.
+  private players: Map<string, Player> = new Map();
+  private table: Table = new Table();
+  private onRoundEnd: ((data: GameEndCallbackData) => void) | undefined;
+  private onGameEnd: ((data: GameEndCallbackData) => void) | undefined;
+  private pluginManager: PluginManager;
+
+  constructor({
+    playerActionTimeLimit = 20_000,
+    runnergRPCClient,
+    storagegRPCClient,
+    onRoundEnd,
+    onGameEnd,
+    gameEndCallback,
+  }: {
+    playerActionTimeLimit?: number;
+    runnergRPCClient: ReturnType<typeof createRunnerGateway>;
+    storagegRPCClient: ReturnType<typeof createStorageGateway>;
+    onRoundEnd?: (data: GameEndCallbackData) => void;
+    onGameEnd?: (data: GameEndCallbackData) => void;
+    gameEndCallback?: (data: GameEndCallbackData) => void;
+  }) {
+    this.playerActionTimeLimit = playerActionTimeLimit;
+    this.runnerGateway = runnergRPCClient;
+    this.storageGateway = storagegRPCClient;
+    this.onRoundEnd = onRoundEnd;
+    this.onGameEnd = onGameEnd ?? gameEndCallback;
+    this.gameEndCallback = gameEndCallback;
+
+    // Initialize table & players container (empty by default)
+    this.table = new Table();
+    this.players = new Map();
+
+    // Create plugin manager at game level so plugins can be shared across rounds
+    this.pluginManager = new PluginManager(
+      this.runnerGateway,
+      this.storageGateway,
+    );
+
+    this.currentRound = new Round({
+      playerActionTimeLimit: this.playerActionTimeLimit,
+      pluginManager: this.pluginManager,
+      roundEndCallback: (d: GameEndCallbackData) => {
+        // First call game-level round-end hook
+        this.onRoundEnd?.(d);
+        // If plugin/round signals match end, call game-end hook
+        if (
+          d.isMatchEnd ||
+          (typeof d.tilesRemaining === 'number' && d.tilesRemaining <= 0)
+        ) {
+          this.onGameEnd?.(d);
+          // fallback to legacy callback if provided
+          this.gameEndCallback?.(d);
+        }
+      },
+      players: this.players,
+      table: this.table,
+    });
+  }
+
+  public getRound(): Round {
+    return this.currentRound;
+  }
+
+  public createNewRound(options?: {
+    resetTable?: boolean;
+    resetPlayers?: boolean;
+    preserveScores?: boolean;
+  }): void {
+    // Tear down current round and create a fresh one bound to the same gateways.
+    try {
+      this.currentRound.cleanup();
+    } catch (err) {
+      // ignore cleanup errors
+    }
+
+    const opts = {
+      resetTable: false,
+      resetPlayers: false,
+      preserveScores: true,
+      ...(options || {}),
+    };
+
+    if (opts.resetPlayers) {
+      // Recreate player instances but optionally preserve scores
+      const preservedScores = new Map<string, number>();
+      if (opts.preserveScores) {
+        for (const [pid, p] of this.players.entries())
+          preservedScores.set(pid, p.getScore());
+      }
+      const newPlayers = new Map<string, Player>();
+      for (const pid of this.players.keys()) {
+        const np = new Player();
+        if (opts.preserveScores) np.setScore(preservedScores.get(pid) ?? 0);
+        newPlayers.set(pid, np);
+      }
+      this.players = newPlayers;
+    }
+
+    if (opts.resetTable) {
+      this.table = new Table();
+    }
+
+    // Ensure table contains all players
+    for (const pid of this.players.keys()) {
+      try {
+        this.table.addPlayer(pid);
+      } catch (err) {
+        // ignore if already present
+      }
+    }
+
+    this.currentRound = new Round({
+      playerActionTimeLimit: this.playerActionTimeLimit,
+      pluginManager: this.pluginManager,
+      roundEndCallback: (d: GameEndCallbackData) => {
+        this.onRoundEnd?.(d);
+        if (
+          d.isMatchEnd ||
+          (typeof d.tilesRemaining === 'number' && d.tilesRemaining <= 0)
+        ) {
+          this.onGameEnd?.(d);
+          this.gameEndCallback?.(d);
+        }
+      },
+      players: this.players,
+      table: this.table,
+    });
+  }
+
+  // Plugin management helpers (delegates to game-level PluginManager)
+  public async addPlugin<StorageType>(plugin: any, priority = 0) {
+    return this.pluginManager.addPlugin(plugin as any, priority);
+  }
+
+  public async removePlugin(pluginId: string) {
+    return this.pluginManager.removePlugin(pluginId);
+  }
+
+  public async runPluginHook<StorageType, HookName extends HookType>(
+    args: Parameters<PluginManager['runHook']>[0],
+  ) {
+    return this.pluginManager.runHook(args as any);
+  }
+
+  /**
+   * Replace the players Map used by this Game. Useful when loading saved
+   * player objects or swapping implementations. Must be called before a
+   * round starts (i.e., when round status is `RoundStart`).
+   */
+  public setPlayers(players: Map<string, Player>): void {
+    if (
+      this.currentRound &&
+      this.currentRound.getStatus() !== MahjongGameRoundStatus.RoundStart
+    ) {
+      throw new Error('Cannot replace players after round started');
+    }
+    this.players = players;
+    // ensure table contains entries for players
+    for (const pid of this.players.keys()) {
+      try {
+        this.table.addPlayer(pid);
+      } catch (err) {
+        // ignore if already present
+      }
+    }
+  }
+
+  /**
+   * Replace the Table instance used by this Game. Must be called before a
+   * round starts.
+   */
+  public setTable(table: Table): void {
+    if (
+      this.currentRound &&
+      this.currentRound.getStatus() !== MahjongGameRoundStatus.RoundStart
+    ) {
+      throw new Error('Cannot replace table after round started');
+    }
+    this.table = table;
+  }
+
+  public addPlayer(playerId: string): void {
+    if (this.players.has(playerId)) {
+      throw new Error('Player already exists');
+    }
+    // Disallow adding players once the current round has started
+    if (
+      this.currentRound &&
+      this.currentRound.getStatus() !== MahjongGameRoundStatus.RoundStart
+    ) {
+      throw new Error('Cannot add player after round started');
+    }
+    const p = new Player();
+    this.players.set(playerId, p);
+    this.table.addPlayer(playerId);
+  }
+
+  public removePlayer(playerId: string): void {
+    if (!this.players.has(playerId)) {
+      throw new Error('Player not found');
+    }
+    if (
+      this.currentRound &&
+      this.currentRound.getStatus() !== MahjongGameRoundStatus.RoundStart
+    ) {
+      throw new Error('Cannot remove player after round started');
+    }
+    this.players.delete(playerId);
+    this.table.removePlayer(playerId);
+  }
+
+  public async next(req: GameNextRequest): Promise<GameNextResponse> {
+    return this.currentRound.next(req);
+  }
+
+  public setCurrentDrawnTile(tile: MahjongTile): void {
+    this.currentRound.setCurrentDrawnTile(tile);
+  }
+
+  public cleanup(): void {
+    this.currentRound.cleanup();
+    // Clear game-owned resources
+    this.players.clear();
+    this.table = new Table();
   }
 }
 

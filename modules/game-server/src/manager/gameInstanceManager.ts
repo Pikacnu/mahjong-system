@@ -43,7 +43,7 @@ export class GameInstanceManager {
       storagegRPCClient: GameInstanceManager.storageGateway!,
       gameEndCallback: ((gameId: string) => {
         return ((data: GameEndCallbackData) => {
-          // Handle game end logic here, e.g., logging, cleanup, notifying other services, etc.
+          // Handle game/round end logic here, e.g., logging, cleanup, notifying other services, etc.
           console.log(`Game with id ${gameId} ended. Data:`, data);
           this.removeGameInstance(gameId);
         }).bind(this);
