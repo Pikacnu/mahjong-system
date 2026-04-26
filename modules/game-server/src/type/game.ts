@@ -1,6 +1,8 @@
 import { randomUUIDv7 } from 'bun';
 import {
   ActionHookType,
+  GameMessageEnum,
+  type GameMessagePayloads,
   type GameNextRequest,
   type GameNextResponse,
   type GameStatsPatch,
@@ -20,6 +22,7 @@ import {
 } from 'utils';
 import { shuffleArray } from 'utils';
 import z from 'zod';
+
 // Plugin hook result schema (defensive parsing for unknown plugin returns)
 const PluginHookResultItem = z.object({
   reject: z.boolean().optional(),
@@ -908,6 +911,17 @@ export class Game {
       }
     }
   }
+
+  public sendEventToPlayer<T extends GameMessageEnum>(
+    playerId: string,
+    event: T,
+    payload: GameMessagePayloads[T],
+  ): void {}
+
+  public broadcastEvent<T extends GameMessageEnum>(
+    event: T,
+    payload: GameMessagePayloads[T],
+  ): void {}
 
   /**
    * Replace the Table instance used by this Game. Must be called before a
