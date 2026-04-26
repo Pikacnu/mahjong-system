@@ -251,7 +251,7 @@ export type PluginHookResult<
 > =
   | {
       pluginStorage?: StorageType;
-      storagePatch?: StoragePatch<StorageType>;
+      storagePatch?: StoragePatch<StorageType>[];
       gameStatsPatch?: GameStatsPatch[];
       pluginAction?: readonly ActionType[];
       stopPropagation?: boolean;

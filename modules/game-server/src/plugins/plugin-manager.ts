@@ -26,6 +26,19 @@ type RegisteredPlugin = {
   instance: PluginInstance<unknown>;
 };
 
+export const lifeCycleHooks: LifecycleHookType[] = [
+  LifecycleHookType.GameStart,
+  LifecycleHookType.GameEnd,
+  LifecycleHookType.RoundStart,
+  LifecycleHookType.RoundEnd,
+];
+
+export const decisionHooks: DecisionHookType[] = [
+  DecisionHookType.EvaluateAvailableActions,
+  DecisionHookType.ValidateAction,
+  DecisionHookType.ResolveAction,
+];
+
 export class PluginManager {
   private plugins = new Map<string, RegisteredPlugin>();
   private pluginStorages = new Map<string, unknown>();
@@ -162,18 +175,196 @@ export class PluginManager {
     this.hookHandlers.set(hook.type, [...current, { pluginId, priority }]);
   }
 
-  public getHookPipeline(hookType: HookType): string[] {
-    return (this.hookHandlers.get(hookType) || [])
-      .sort((a, b) => a.priority - b.priority)
-      .map((handler) => handler.pluginId);
-  }
-
-  private getHookPipelineWithPriority(
-    hookType: HookType,
-  ): { pluginId: string; priority: number }[] {
-    return (this.hookHandlers.get(hookType) || []).sort(
-      (a, b) => a.priority - b.priority,
+  public getHookPipeline(hookType: HookType): {
+    pluginId: string;
+    priority: number;
+    isParallelable?: boolean;
+  }[] {
+    const handlers = this.hookHandlers.get(hookType) || [];
+    // Observability: quick metric about pipeline composition
+    // eslint-disable-next-line no-console
+    console.debug(
+      `[PluginManager] getHookPipeline hook=${String(hookType)} handlers=${handlers.length}`,
     );
+
+    const isDecisionHook = Object.values(DecisionHookType).includes(
+      hookType as DecisionHookType,
+    );
+
+    // Variable Name -> Array of { pluginId, priority }
+    const modifyVariableMap: Map<
+      string,
+      {
+        pluginId: string;
+        priority: number;
+      }[]
+    > = new Map();
+    const useVariableMap: Map<
+      string,
+      {
+        pluginId: string;
+        priority: number;
+      }[]
+    > = new Map();
+
+    handlers.forEach((handler) => {
+      const plugin = this.plugins.get(handler.pluginId);
+      if (!plugin) return null;
+
+      const currentHookDef =
+        plugin.instance.implementation[
+          isDecisionHook ? 'decision' : 'lifecycle'
+        ];
+      if (!currentHookDef) return null;
+      if (currentHookDef.ReadGlobalStorageValues) {
+        currentHookDef.ReadGlobalStorageValues.forEach((key) => {
+          const current = useVariableMap.get(key) || [];
+          useVariableMap.set(key, [
+            ...current,
+            {
+              pluginId: handler.pluginId,
+              priority: handler.priority,
+            },
+          ]);
+        });
+      }
+      if (currentHookDef.SetGlobalStorageValues) {
+        currentHookDef.SetGlobalStorageValues.forEach((key) => {
+          const current = modifyVariableMap.get(key) || [];
+          modifyVariableMap.set(key, [
+            ...current,
+            {
+              pluginId: handler.pluginId,
+              priority: handler.priority,
+            },
+          ]);
+        });
+      }
+
+      return null;
+    });
+
+    // Sort plugins using a 4-step approach (performance-minded):
+    // 1) compute edit count per variable
+    // 2) precompute per-plugin metadata and per-key priority maps
+    // 3) comparator:
+    //    - modifiers before non-modifiers
+    //    - if both modify the same variable(s), compare per-variable priority (variables with higher edit counts first)
+    //    - if no shared variable, compare handler priority (higher first), then max variable edit count, then modify count
+    // 4) if neither modifies, compare use priority, then use count; final tie-breaker: registration index
+
+    const variableEditCount = new Map<string, number>();
+    for (const [key, arr] of modifyVariableMap.entries()) {
+      variableEditCount.set(
+        key,
+        (variableEditCount.get(key) ?? 0) + arr.length,
+      );
+    }
+
+    // per-key fast lookup maps: key -> (pluginId -> priority)
+    const perKeyModifyPriority = new Map<string, Map<string, number>>();
+    for (const [key, arr] of modifyVariableMap.entries()) {
+      const m = new Map<string, number>();
+      for (const it of arr) m.set(it.pluginId, it.priority);
+      perKeyModifyPriority.set(key, m);
+    }
+    const perKeyUsePriority = new Map<string, Map<string, number>>();
+    for (const [key, arr] of useVariableMap.entries()) {
+      const m = new Map<string, number>();
+      for (const it of arr) m.set(it.pluginId, it.priority);
+      perKeyUsePriority.set(key, m);
+    }
+
+    type PluginMeta = {
+      index: number;
+      modifyKeys: Set<string>;
+      useKeys: Set<string>;
+      modifyCount: number;
+      useCount: number;
+      modifyMax?: number;
+      useMax?: number;
+      maxEditCount?: number;
+    };
+
+    const pluginMeta = new Map<string, PluginMeta>();
+    handlers.forEach((h, idx) =>
+      pluginMeta.set(h.pluginId, {
+        index: idx,
+        modifyKeys: new Set(),
+        useKeys: new Set(),
+        modifyCount: 0,
+        useCount: 0,
+      }),
+    );
+
+    for (const [key, arr] of modifyVariableMap.entries()) {
+      const editCount = arr.length;
+      for (const item of arr) {
+        const m = pluginMeta.get(item.pluginId);
+        if (!m) continue;
+        m.modifyKeys.add(key);
+        m.modifyCount++;
+        m.modifyMax = Math.max(m.modifyMax ?? -Infinity, item.priority);
+        m.maxEditCount = Math.max(m.maxEditCount ?? -Infinity, editCount);
+      }
+    }
+
+    for (const [key, arr] of useVariableMap.entries()) {
+      for (const item of arr) {
+        const m = pluginMeta.get(item.pluginId);
+        if (!m) continue;
+        m.useKeys.add(key);
+        m.useCount++;
+        m.useMax = Math.max(m.useMax ?? -Infinity, item.priority);
+      }
+    }
+
+    const sorted = [...handlers].sort((a, b) => {
+      const A = pluginMeta.get(a.pluginId)!;
+      const B = pluginMeta.get(b.pluginId)!;
+
+      const aMod = A.modifyCount > 0;
+      const bMod = B.modifyCount > 0;
+      if (aMod !== bMod) return aMod ? -1 : 1;
+
+      if (aMod && bMod) {
+        // if they share modified keys, compare those keys first (keys with higher edit counts first)
+        const shared = [...A.modifyKeys].filter((k) => B.modifyKeys.has(k));
+        if (shared.length > 0) {
+          shared.sort(
+            (k1, k2) => variableEditCount.get(k2)! - variableEditCount.get(k1)!,
+          );
+          for (const key of shared) {
+            const aPri = perKeyModifyPriority.get(key)!.get(a.pluginId)!;
+            const bPri = perKeyModifyPriority.get(key)!.get(b.pluginId)!;
+            if (aPri !== bPri) return bPri - aPri;
+          }
+          return A.index - B.index;
+        }
+
+        // no shared keys: primary by handler priority (higher first), then by max var edit count, then by modifyCount
+        if (a.priority !== b.priority) return b.priority - a.priority;
+        const aMaxEdit = A.maxEditCount ?? -Infinity;
+        const bMaxEdit = B.maxEditCount ?? -Infinity;
+        if (aMaxEdit !== bMaxEdit) return bMaxEdit - aMaxEdit;
+        if (A.modifyCount !== B.modifyCount)
+          return B.modifyCount - A.modifyCount;
+        return A.index - B.index;
+      }
+
+      // neither modifies: compare use priority, then use count, then index
+      const aUseMax = A.useMax ?? -Infinity;
+      const bUseMax = B.useMax ?? -Infinity;
+      if (aUseMax !== bUseMax) return bUseMax - aUseMax;
+      if (A.useCount !== B.useCount) return B.useCount - A.useCount;
+      return A.index - B.index;
+    });
+
+    return sorted.map((handler) => ({
+      pluginId: handler.pluginId,
+      priority: handler.priority,
+      isParallelable: pluginMeta.get(handler.pluginId)?.modifyCount === 0,
+    }));
   }
 
   public async runHook<StorageType, HookName extends HookType>({
@@ -190,53 +381,26 @@ export class PluginManager {
     roundIndex?: number;
   }): Promise<WithPluginId<PluginHookResult<StorageType>>[]> {
     const results: WithPluginId<PluginHookResult<StorageType>>[] = [];
+    // Observability: hook execution start
+    // eslint-disable-next-line no-console
+    console.info(
+      `[PluginManager] runHook start hook=${String(hook)} requestId=${requestId} playerId=${playerId ?? 'N/A'}`,
+    );
 
-    for (const pluginId of this.getHookPipeline(hook)) {
-      const registered = this.plugins.get(pluginId);
-      if (!registered) continue;
+    const pipeLine = this.getHookPipeline(hook);
+    const parallelableHook = pipeLine.filter((h) => h.isParallelable || false);
+    const sequentialHook = pipeLine.filter((h) => !h.isParallelable);
+    const abortController = new AbortController();
+    const { signal } = abortController;
 
-      const plugin = registered.instance as PluginInstance<StorageType>;
-      const hookDef = plugin.hooks.find((h) => h.type === hook);
-      if (!hookDef) continue;
-
-      const storage = this.pluginStorages.get(pluginId) as StorageType;
-
-      // if (plugin.runtime.isStateful) {
-      //   // get Global Storage Values for the plugin
-      //   const injectionValues = plugin.usedGlobalStorageKeys.map((key) => ({
-      //     key,
-      //     value: this.getGlobalStorageValue(key),
-      //   }));
-      //   // Get __state__ value from the plugin
-      //   const values = (await this.runner.getLiveModuleValue({
-      //     moduleId: pluginId,
-      //     key: '__state__',
-      //   })) as StorageType | undefined;
-      //   const mergedStorage = { ...storage, ...values };
-      //   if (values) {
-      //     this.pluginStorages.set(pluginId, {
-      //       ...storage,
-      //       ...mergedStorage,
-      //     });
-      //   }
-      //   // Inject global storage values into plugin storage with a special key
-      //   await this.runner.setLiveModuleValue({
-      //     moduleId: pluginId,
-      //     key: '__state__',
-      //     value: injectionValues,
-      //   });
-      // } else {
-      //   // For non-stateful plugins, we can directly inject global storage values into the plugin storage before executing the hook, and clear them afterward to avoid unintended side effects between hooks
-      //   const injectionValues = plugin.usedGlobalStorageKeys.reduce(
-      //     (acc, key) => {
-      //       acc[key] = this.getGlobalStorageValue(key);
-      //       return acc;
-      //     },
-      //     {} as Record<string, unknown>,
-      //   );
-      //   const mergedStorage = { ...storage, ...injectionValues };
-      //   this.pluginStorages.set(pluginId, mergedStorage);
-      // }
+    const hookExecution = async (
+      pluginId: string,
+      hookDef: PluginHookDefinition,
+      plugin: PluginInstance<StorageType>,
+      storage: StorageType,
+      mutateStorage = false,
+    ) => {
+      if (signal.aborted) return undefined;
 
       const injectionValues = plugin.usedGlobalStorageKeys.reduce(
         (acc, key) => {
@@ -245,35 +409,38 @@ export class PluginManager {
         },
         {} as Record<string, unknown>,
       );
+
       const mergedStorage = { ...storage, ...injectionValues };
       this.pluginStorages.set(pluginId, mergedStorage);
+
+      if (signal.aborted) return undefined;
 
       const implementationResult = await this.executeLocalHook(plugin, hook, {
         requestId,
         payload,
         playerId,
         roundIndex,
-        storage,
+        storage: mergedStorage,
         hookDef,
       });
 
       if (implementationResult) {
-        results.push({
+        const out = {
           ...implementationResult,
           pluginId,
-        } as WithPluginId<PluginHookResult<StorageType>>);
-        if (implementationResult.stopPropagation) {
-          break;
-        }
+        } as WithPluginId<PluginHookResult<StorageType>>;
         if (
+          mutateStorage &&
           implementationResult.storagePatch &&
           Array.isArray(implementationResult.storagePatch) &&
           implementationResult.storagePatch.length > 0
         ) {
-          this.applyStoragePatch(implementationResult.storagePatch, plugin);
+          this.applyStoragePatch(plugin, implementationResult.storagePatch);
         }
-        continue;
+        return out;
       }
+
+      if (signal.aborted) return undefined;
 
       const runnerResult = await this.executeRunnerHook(
         pluginId,
@@ -283,20 +450,90 @@ export class PluginManager {
           requestId,
           payload,
         },
+        signal,
       );
 
-      if (runnerResult === undefined) {
-        continue;
-      }
+      if (runnerResult === undefined) return undefined;
 
-      results.push({
+      const out = {
         ...runnerResult,
         pluginId,
-      } as WithPluginId<PluginHookResult<StorageType>>);
-
-      if (runnerResult.stopPropagation) {
-        break;
+      } as WithPluginId<PluginHookResult<StorageType>>;
+      if (
+        mutateStorage &&
+        runnerResult.storagePatch &&
+        Array.isArray(runnerResult.storagePatch) &&
+        runnerResult.storagePatch.length > 0
+      ) {
+        this.applyStoragePatch(
+          plugin,
+          runnerResult.storagePatch as StoragePatch<StorageType>[],
+        );
       }
+      return out;
+    };
+
+    for (const { pluginId } of sequentialHook) {
+      if (signal.aborted) break;
+
+      const registered = this.plugins.get(pluginId);
+      if (!registered) continue;
+
+      const plugin = registered.instance as PluginInstance<StorageType>;
+      const hookDef = plugin.hooks.find((h) => h.type === hook);
+      if (!hookDef) continue;
+
+      const storage = this.pluginStorages.get(pluginId) as StorageType;
+      const executionResult = await hookExecution(
+        pluginId,
+        hookDef,
+        plugin,
+        storage,
+        true,
+      );
+
+      if (executionResult) {
+        results.push(executionResult);
+        if (executionResult.stopPropagation) {
+          abortController.abort();
+          break;
+        }
+      }
+    }
+
+    if (!signal.aborted && parallelableHook.length > 0) {
+      const promises = parallelableHook.map(async ({ pluginId }) => {
+        if (signal.aborted) return null;
+        const registered = this.plugins.get(pluginId);
+        if (!registered) return null;
+        const plugin = registered.instance as PluginInstance<StorageType>;
+        const hookDef = plugin.hooks.find((h) => h.type === hook);
+        if (!hookDef) return null;
+        const storage = this.pluginStorages.get(pluginId) as StorageType;
+        const res = await hookExecution(pluginId, hookDef, plugin, storage);
+        if (res?.stopPropagation) abortController.abort();
+        return res;
+      });
+
+      const settled = await Promise.allSettled(promises);
+      const values = settled
+        .filter(
+          (r) =>
+            r.status === 'fulfilled' &&
+            (r as PromiseFulfilledResult<any>).value != null,
+        )
+        .map(
+          (r) =>
+            (
+              r as PromiseFulfilledResult<WithPluginId<
+                PluginHookResult<StorageType>
+              > | null>
+            ).value,
+        )
+        .filter((v) => v != null) as WithPluginId<
+        PluginHookResult<StorageType>
+      >[];
+      results.push(...values);
     }
 
     return results;
@@ -358,27 +595,39 @@ export class PluginManager {
       requestId: string;
       payload: unknown;
     },
+    signal?: AbortSignal,
   ): Promise<PluginHookResult<StorageType> | undefined> {
+    if (signal?.aborted) return undefined;
+
     let binding = this.runnerPluginBinding.get(pluginId);
     if (!binding) {
       binding = await this.createRunnerBinding(pluginId, runtime);
     }
 
-    const response = await this.runner.callLiveModuleFn({
-      moduleId: binding.moduleId,
-      functionName: hook,
-      payload: {
-        this: {
-          requestId: context.requestId,
-        },
-        args: [context.payload],
-      },
-    });
+    if (signal?.aborted) return undefined;
 
-    if (response && typeof response === 'object') {
-      return response as PluginHookResult<StorageType>;
+    try {
+      const response = await this.runner.callLiveModuleFn({
+        moduleId: binding.moduleId,
+        functionName: hook,
+        payload: {
+          this: {
+            requestId: context.requestId,
+          },
+          args: [context.payload],
+        },
+      });
+
+      if (signal?.aborted) return undefined;
+
+      if (response && typeof response === 'object') {
+        return response as PluginHookResult<StorageType>;
+      }
+      return undefined;
+    } catch (err) {
+      if (signal?.aborted) return undefined;
+      throw err;
     }
-    return undefined;
   }
 
   private async createRunnerBinding(
@@ -410,15 +659,42 @@ export class PluginManager {
         defaultState: this.normalizeDefaultStore(definition.defaultStore),
         ttlMs: runtime.ttlMs,
       };
-
-      resolvedRuntime = {
-        ttlMs: runtime.ttlMs,
-      };
     }
 
     const created = await this.runner.createLiveModule({
       manifest,
     });
+
+    // If we have a defaultState for the runtime, push it into the runner's live module store
+    // so the VM has initial state available. This uses SetLiveModuleValue because
+    // CreateLiveModule request doesn't carry runtime state in the current proto.
+    if (
+      resolvedRuntime &&
+      (resolvedRuntime as any).defaultState !== undefined
+    ) {
+      try {
+        // eslint-disable-next-line no-console
+        console.info(
+          `[PluginManager] initializing default state for plugin=${pluginId} module=${created.moduleId}`,
+        );
+        await this.runner.setLiveModuleValue({
+          moduleId: created.moduleId,
+          key: '__state__',
+          value: (resolvedRuntime as any).defaultState,
+        });
+        // keep local cache in sync
+        this.pluginStorages.set(
+          pluginId,
+          (resolvedRuntime as any).defaultState as unknown,
+        );
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[PluginManager] failed to initialize default state for ${pluginId}`,
+          err,
+        );
+      }
+    }
 
     const binding: RunnerLiveModuleBinding = {
       pluginId,
@@ -457,8 +733,8 @@ export class PluginManager {
   }
 
   private applyStoragePatch<T extends unknown>(
-    patches: StoragePatch<T>[],
     plugin: PluginInstance<T>,
+    patches: StoragePatch<T>[],
   ) {
     for (const patch of patches) {
       let currentValue: unknown;
@@ -466,23 +742,46 @@ export class PluginManager {
       switch (patch.type) {
         case StoragePatchType.Global: {
           if (!plugin.usedGlobalStorageKeys.includes(keyString)) {
-            console.error('Key Not Registeried By Plugin');
+            // eslint-disable-next-line no-console
+            console.error('Key not registered for plugin');
             break;
           }
           currentValue = this.getGlobalStorageValue(keyString);
           if (this.validValue(patch.value, currentValue)) {
+            // eslint-disable-next-line no-console
+            console.debug(
+              `[PluginManager] apply global patch key=${keyString} plugin=${plugin.manifest.id}`,
+            );
             this.setGlobalStorageValue(keyString, patch.value);
           } else {
-            console.error('Invalid Value Type For Global Storage');
+            // eslint-disable-next-line no-console
+            console.error('Invalid value type for global storage');
           }
           break;
         }
         case StoragePatchType.Plugin: {
-          currentValue = this.pluginStorages.get(patch.key as string);
-          if (this.validValue(patch.value, currentValue)) {
-            this.pluginStorages.set(patch.key as string, patch.value);
+          // patch.key is a key inside the plugin's storage object
+          const pluginId = plugin.manifest.id;
+          const currentStore = this.pluginStorages.get(pluginId) as
+            | Record<string, unknown>
+            | undefined;
+          const prop = String(patch.key);
+          const currentPropValue = currentStore
+            ? currentStore[prop]
+            : undefined;
+          if (this.validValue(patch.value, currentPropValue)) {
+            // eslint-disable-next-line no-console
+            console.debug(
+              `[PluginManager] apply plugin patch plugin=${pluginId} key=${prop}`,
+            );
+            const newStore = {
+              ...((currentStore as Record<string, unknown>) || {}),
+              [prop]: patch.value,
+            };
+            this.pluginStorages.set(pluginId, newStore as unknown as T);
           } else {
-            console.error('Invalid Value Type For Plugin Storage');
+            // eslint-disable-next-line no-console
+            console.error('Invalid value type for plugin storage');
           }
           break;
         }

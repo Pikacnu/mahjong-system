@@ -558,7 +558,6 @@ export class Game {
       )
       .flatMap((result) => result.gameStatsPatch || []);
     this.patchesReslover(gameStatusPatches);
-    // 這裡應該把 gameStatusPatches 傳給外部系統，讓它決定是否要更新遊戲狀態或進行其他處理。
     return { accepted: true };
   }
 
