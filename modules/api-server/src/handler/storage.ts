@@ -1,5 +1,5 @@
 import { credentials } from '@grpc/grpc-js';
-import { FUNCTION_STORAGE_HOSTNAME, GRPC_PORT } from 'utils';
+import { GRPC_PORT, FUNCTION_STORAGE_HOSTNAME } from 'utils';
 import { MahjongCodeStorageV1 } from 'proto';
 
 function createStorageClient(

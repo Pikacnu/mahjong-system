@@ -1,13 +1,17 @@
-import { createWebHandler } from 'utils';
+import {
+  createWebHandler,
+  FUNCTION_STORAGE_HOSTNAME,
+  PLUGIN_RUNNER_HOSTNAME,
+} from 'utils';
 import { createRunnerGateway, createStorageGateway } from './src/type';
 import type { StorageGateway, RunnerGateway } from './src/type/gateway';
 import { GameInstanceManager } from './src/manager/gameInstanceManager';
 
 const storageGateway: StorageGateway = createStorageGateway(
-  `localhost:${process.env.GRPC_PORT}`,
+  `${FUNCTION_STORAGE_HOSTNAME}:${process.env.GRPC_PORT}`,
 );
 const runnerGateway: RunnerGateway = createRunnerGateway(
-  `localhost:${process.env.GRPC_PORT}`,
+  `${PLUGIN_RUNNER_HOSTNAME}:${process.env.GRPC_PORT}`,
 );
 
 const gameInstanceManager = GameInstanceManager.getInstanceManager({

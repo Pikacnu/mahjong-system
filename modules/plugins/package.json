@@ -1,0 +1,19 @@
+{
+  "name": "plugins",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc src/*.ts --outdir ./dist --allowSyntheticDefaultImports --allowUmdGlobalAccess --allowUnreachableCode --alwaysStrict --noEmit "
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "tsc": "^2.0.4",
+    "utils": "workspace:*"
+  }
+}

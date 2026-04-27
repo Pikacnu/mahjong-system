@@ -1,6 +1,7 @@
 import { randomUUIDv7 } from 'bun';
 import {
   ActionHookType,
+  GameEndTypeEnum,
   GameMessageEnum,
   type GameMessagePayloads,
   type GameNextRequest,
@@ -80,6 +81,7 @@ export class Round {
   private isRoundEnded = false;
 
   private currentWind: number = 0; // 0: East, 1: South, 2: West, 3: North
+  private game: Game | null = null;
 
   constructor({
     playerActionTimeLimit = 20_000,
@@ -87,8 +89,10 @@ export class Round {
     players,
     table,
     pluginManager,
+    gameClass,
   }: {
     playerActionTimeLimit?: number;
+    gameClass: Game;
     pluginManager?: PluginManager;
     roundEndCallback: (data: GameEndCallbackData) => void;
     players?: Map<string, Player>;
@@ -99,6 +103,17 @@ export class Round {
     this.roundEndCallback = roundEndCallback;
     this.players = players ?? new Map();
     this.table = table ?? new Table();
+    this.game = gameClass;
+  }
+
+  private boardcastMessage(...args: Parameters<Game['broadcastEvent']>): void {
+    return this.game?.broadcastEvent(...args);
+  }
+
+  private sendMessageToPlayer(
+    ...args: Parameters<Game['sendEventToPlayer']>
+  ): void {
+    return this.game?.sendEventToPlayer(...args);
   }
 
   // Player / table management is performed by the higher-level `Game`.
@@ -142,14 +157,14 @@ export class Round {
 
     // Check if player can do any action before drawing tile (e.g., Ron, Tsumo)
 
-    await this.runHook({
-      hook: ActionHookType.EvaluateAvailableActions,
-      requestId: this.currentRequestId,
-      payload: {
-        playerId: currentPlayerId,
-        tiles: this.getCurrentPlayer().getHandTiles(),
-      },
-    });
+    // const checkResult = await this.runHook({
+    //   hook: ActionHookType.EvaluateAvailableActions,
+    //   requestId: this.currentRequestId,
+    //   payload: {
+    //     playerId: currentPlayerId,
+    //     tiles: this.getCurrentPlayer().getHandTiles(),
+    //   },
+    // });
 
     const actions = await this.checkPlayerActionType(
       this.getCurrentPlayer(),
@@ -485,6 +500,9 @@ export class Round {
     // and external systems should be notified to show final results or scoring.
 
     if (this.isRoundEnded) {
+      this.boardcastMessage(GameMessageEnum.RoundEnd, {
+        type: GameEndTypeEnum.OutOfTiles,
+      });
       this.roundEndCallback!({
         roundIndex: this.roundIndex,
         isMatchEnd: this.isRoundEnded,
@@ -512,6 +530,13 @@ export class Round {
     }
     this.processingDepth += 1;
 
+    if (
+      this.table.getTilesCount() === 0 &&
+      this.roundStatus !== MahjongGameRoundStatus.RoundEnd
+    ) {
+      this.roundStatus = MahjongGameRoundStatus.RoundEnd;
+    }
+
     try {
       switch (this.roundStatus) {
         case MahjongGameRoundStatus.RoundStart: {
@@ -529,6 +554,7 @@ export class Round {
           this.waitForPlayerAction();
           break;
         }
+
         case MahjongGameRoundStatus.ResolvingPlayerAction: {
           const isValidType = PlayerActionType.safeParse(args);
           if (!isValidType.success) {
@@ -801,6 +827,7 @@ export class Game {
       },
       players: this.players,
       table: this.table,
+      gameClass: this,
     });
   }
 
@@ -871,6 +898,7 @@ export class Game {
       },
       players: this.players,
       table: this.table,
+      gameClass: this,
     });
   }
 
@@ -912,13 +940,13 @@ export class Game {
     }
   }
 
-  public sendEventToPlayer<T extends GameMessageEnum>(
+  public sendEventToPlayer<T extends keyof GameMessagePayloads>(
     playerId: string,
     event: T,
     payload: GameMessagePayloads[T],
   ): void {}
 
-  public broadcastEvent<T extends GameMessageEnum>(
+  public broadcastEvent<T extends keyof GameMessagePayloads>(
     event: T,
     payload: GameMessagePayloads[T],
   ): void {}

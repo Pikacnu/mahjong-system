@@ -21,6 +21,9 @@ export enum GameMessageEnum {
   GameStart,
   GameEnd,
 
+  RoundStart,
+  RoundEnd,
+
   PlayerGetsTile,
   PlayerDrawsTile,
   PlayerDiscardsTile,
@@ -47,6 +50,13 @@ export type MessageEnums = {
   [MessageEnum.Room]: RoomMessageEnum;
 };
 
+export enum GameEndTypeEnum {
+  Ron,
+  Tsumo,
+  OutOfTiles,
+  Other,
+}
+
 // Payload map for Game message types
 export type GameMessagePayloads = {
   [GameMessageEnum.GameStart]: {
@@ -69,6 +79,11 @@ export type GameMessagePayloads = {
   [GameMessageEnum.PlayerDiscardsTile]: {
     playerId: string;
     tile: any;
+  };
+  [GameMessageEnum.RoundStart]: {};
+  [GameMessageEnum.RoundEnd]: {
+    type: GameEndTypeEnum;
+    payload?: unknown;
   };
   [GameMessageEnum.PlayerChi]: {
     playerId: string;
@@ -104,7 +119,7 @@ export type GameMessagePayloads = {
   };
   [GameMessageEnum.ShowHint]: {
     playerId: string;
-    hint: string;
+    hint: unknown;
   };
   [GameMessageEnum.ShowError]: {
     playerId: string;
@@ -112,7 +127,7 @@ export type GameMessagePayloads = {
   };
   [GameMessageEnum.ShowInfo]: {
     playerId: string;
-    info: string;
+    info: unknown;
   };
 };
 
@@ -133,8 +148,8 @@ export type MessagePayloadType<
 > = T extends MessageEnum.Game
   ? GameMessagePayloads[T2 & keyof GameMessagePayloads]
   : T extends MessageEnum.Room
-  ? RoomMessagePayloads[T2 & keyof RoomMessagePayloads]
-  : never;
+    ? RoomMessagePayloads[T2 & keyof RoomMessagePayloads]
+    : never;
 
 export type Message<
   T extends MessageEnum,
