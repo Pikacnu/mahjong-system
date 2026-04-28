@@ -101,7 +101,6 @@ export const pluginDefinitions = pgTable(
     versionId: integer('version_id')
       .notNull()
       .references(() => versions.id),
-    isStateful: boolean('is_stateful').notNull().default(false),
     // Stored as JSON string to keep payload format-agnostic.
     defaultStore: text('default_store').notNull().default('{}'),
     createdAt: timestamp('created_at').defaultNow().notNull(),

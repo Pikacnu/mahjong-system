@@ -45,9 +45,8 @@ message GetPluginDefinitionRequest {
 
 // GetPluginDefinitionResponse returns runtime-related plugin definition.
 message GetPluginDefinitionResponse {
-  bool is_stateful = 1;
-  bytes default_store = 2;
-  repeated MethodInfo dependencies = 3;
+  bytes default_store = 1;
+  repeated MethodInfo dependencies = 2;
 }
 
 // GetCodeVersionRequest retrieves all available versions for a given function name.
@@ -87,9 +86,8 @@ message StoreResourcesRequest {
 // StorePluginDefinitionRequest stores plugin runtime definition.
 message StorePluginDefinitionRequest {
   MethodInfo method_info = 1;
-  bool is_stateful = 2;
-  bytes default_store = 3;
-  ResourceSource source_type = 4;
+  optional bytes default_store = 2;
+  ResourceSource source_type = 3;
 }
 
 // StoreResourcesResponse returns an error code indicating the success or failure of 

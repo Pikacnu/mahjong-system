@@ -169,7 +169,6 @@ export function createGrpcServer(): Server {
 
       const definition = await db
         .select({
-          isStateful: pluginDefinitions.isStateful,
           defaultStore: pluginDefinitions.defaultStore,
         })
         .from(pluginDefinitions)
@@ -187,7 +186,6 @@ export function createGrpcServer(): Server {
       const dependenciesData = await getDependenciesByVersionId(versionData.id);
 
       callback(null, {
-        isStateful: definition.isStateful,
         defaultStore: encodeToBytes(definition.defaultStore) as Buffer,
         dependencies: dependenciesData,
       });
@@ -390,7 +388,7 @@ export function createGrpcServer(): Server {
         });
     },
     storePluginDefinition: async (call, callback) => {
-      const { methodInfo, isStateful, defaultStore, sourceType } = call.request;
+      const { methodInfo, defaultStore, sourceType } = call.request;
 
       if (!methodInfo) {
         return callback({
@@ -434,13 +432,11 @@ export function createGrpcServer(): Server {
         .insert(pluginDefinitions)
         .values({
           versionId: versionData.id,
-          isStateful,
           defaultStore: defaultStoreText,
         })
         .onConflictDoUpdate({
           target: pluginDefinitions.versionId,
           set: {
-            isStateful,
             defaultStore: defaultStoreText,
             updatedAt: new Date(),
           },
