@@ -16,10 +16,11 @@ import {
   PlayerActionType,
   PlayerStatusPatches,
   type PluginHookPayloads,
-  type PluginHookResult,
   TimeoutAction,
   type TimeoutActionEvent,
-  type WithPluginId,
+  type ActionSharedData,
+  DecisionHookType,
+  PluginActionType,
 } from 'utils';
 import { shuffleArray } from 'utils';
 import z from 'zod';
@@ -37,7 +38,6 @@ import {
   PluginManager,
 } from '../type';
 import { Player } from './player';
-import type { ActionSharedData, ActionSharedDataPlayersData } from './utils';
 
 export type GameEndCallbackData = {
   roundIndex?: number;
@@ -156,15 +156,6 @@ export class Round {
     this.table.addPlayerDrawedTile(currentPlayerId, tile);
 
     // Check if player can do any action before drawing tile (e.g., Ron, Tsumo)
-
-    // const checkResult = await this.runHook({
-    //   hook: ActionHookType.EvaluateAvailableActions,
-    //   requestId: this.currentRequestId,
-    //   payload: {
-    //     playerId: currentPlayerId,
-    //     tiles: this.getCurrentPlayer().getHandTiles(),
-    //   },
-    // });
 
     const actions = await this.checkPlayerActionType(
       this.getCurrentPlayer(),
@@ -614,7 +605,7 @@ export class Round {
   > {
     return {
       currentPlayerId: this.getCurrentPlayerId(),
-      PlayersData: Array.from(this.players.entries()).map(
+      playersData: Array.from(this.players.entries()).map(
         ([playerId, player]) => ({
           playerId,
           handCount: player.getHandTiles().length,
@@ -691,7 +682,74 @@ export class Round {
     // - Keep the calculation pure (input -> score patches) and apply via patchesReslover.
     const sharedData = await this.buildCurrentPluginRunnerSharedData();
 
-    const winingPlayerId = this.getCurrentPlayerId();
+    const evaluationResult = await this.modulePluginManager?.runHook({
+      hook: DecisionHookType.EvaluateHand,
+      requestId: this.currentRequestId,
+      payload: sharedData,
+    });
+    // Todo Change this to more flexible way to store values
+    const tempStorage: { [key: string]: any } = {
+      han: 0,
+      fu: 0,
+      yakuList: [] as string[],
+    };
+    // get Final Storage
+    evaluationResult?.forEach((evaluationItem) => {
+      if (!evaluationItem.pluginAction) return null;
+      const evalAction = evaluationItem.pluginAction.filter(
+        (action) => action.type === PluginActionType.EVALUATION,
+      );
+      Object.entries(evalAction).forEach(([key, value]) => {
+        if (key in tempStorage) {
+          const targetVal = tempStorage[key as keyof typeof tempStorage];
+          const storeTargetType = targetVal;
+          if (Array.isArray(targetVal)) {
+            if (Array.isArray(value)) {
+              tempStorage[key] = [...targetVal, ...value];
+            } else {
+              tempStorage[key] = [...targetVal, value];
+            }
+          }
+          switch (typeof targetVal) {
+            case 'number': {
+              if (typeof value === 'number') {
+                tempStorage[key] = targetVal + value;
+              } else {
+                console.warn(
+                  `Type mismatch for key ${key}: expected number but got ${typeof value}`,
+                );
+              }
+              break;
+            }
+            case 'object': {
+              if (typeof value === 'object' && !Array.isArray(value)) {
+                tempStorage[key] = { ...targetVal, ...value };
+              } else {
+                console.warn(
+                  `Type mismatch for key ${key}: expected object but got ${typeof value}`,
+                );
+              }
+              break;
+            }
+            default: {
+              console.warn(
+                `Unsupported target type for key ${key}: ${typeof targetVal}`,
+              );
+            }
+          }
+        } else {
+          tempStorage[key] = value;
+        }
+      });
+    });
+
+    const scoreCalcResult = await this.modulePluginManager?.runHook({
+      hook: DecisionHookType.CalculateScore,
+      requestId: this.currentRequestId,
+      payload: { sharedData, ...tempStorage } as any,
+    });
+    // Todo: Complete score Calculation flow
+    // Merge score calculation results
   }
 
   private async runHook<HookName extends HookType>(data: {

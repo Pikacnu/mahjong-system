@@ -1,24 +1,7 @@
-import { createWebHandler, HOSTNAME, PORT } from 'utils';
-import { db } from './src/utils/db';
-import { and, eq, desc } from 'drizzle-orm';
-import { hash } from 'bun';
-import { versions, method, resource } from './db/schema';
+import { PORT } from 'utils';
+
 import { createGrpcServer } from './src/grpc/handler';
 import { ServerCredentials } from '@grpc/grpc-js';
-
-function getLastVersion(resourceType: 'function' | 'modules') {
-  return db
-    .select({ version: versions.version })
-    .from(versions)
-    .where(
-      and(
-        eq(versions.resourceType, resourceType),
-        eq(versions.sourceType, 'builtin'),
-      ),
-    )
-    .orderBy(desc(versions.version))
-    .limit(1);
-}
 
 // const server = createWebHandler({
 //   routes: {

@@ -55,11 +55,12 @@ export const versions = pgTable(
       .references(() => resource.id),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     resourceType: builtinType('resource_type').notNull(),
-    sourceType: sourceType('source_type').notNull(),
   },
   (table) => {
     return [
       index('idx_versions_method_id').on(table.methodId),
+      // composite index to help resolve latest version for a method
+      index('idx_versions_method_version').on(table.methodId, table.version),
       index('idx_versions_resource_id').on(table.resourceId),
       uniqueIndex('uq_versions_method_version_type').on(
         table.methodId,

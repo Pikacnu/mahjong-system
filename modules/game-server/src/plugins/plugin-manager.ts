@@ -19,7 +19,7 @@ import {
   type StoragePatch,
   StoragePatchType,
 } from 'utils';
-import type { RunnerGateway, StorageGateway } from '../type/gateway';
+import type { RunnerGateway, StorageGateway } from '../classes/gateway';
 
 type RegisteredPlugin = {
   priority: number;

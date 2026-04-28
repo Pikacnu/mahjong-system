@@ -10,10 +10,11 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "acorn": "^8.16.0",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.1",
     "postgre": "^0.1.8",
-    "utils": "workspace:*",
-    "proto": "workspace:*"
+    "proto": "workspace:*",
+    "utils": "workspace:*"
   }
 }

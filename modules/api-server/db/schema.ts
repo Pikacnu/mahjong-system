@@ -36,14 +36,38 @@ export const gameSnapshots = schema.table('game_snapshots', {
 
 export const game = schema.table('game', {
   id: integer().primaryKey().unique(),
+  createdAt: integer().notNull(),
+  updatedAt: integer().notNull(),
 });
 
 export const room = schema.table('room', {
   id: integer().primaryKey().unique(),
   status: roomStatusEnum().notNull().default('waiting'),
+  createdAt: integer().notNull(),
+  updatedAt: integer().notNull(),
 });
 
 export const player = schema.table('player', {
   id: integer().primaryKey().unique(),
   name: text().notNull(),
+});
+
+export const gameRoomBinding = schema.table('game_room_binding', {
+  id: integer().primaryKey().unique(),
+  gameId: integer()
+    .notNull()
+    .references(() => game.id),
+  roomId: integer()
+    .notNull()
+    .references(() => room.id),
+});
+
+export const roomPlayerBinding = schema.table('room_player_binding', {
+  id: integer().primaryKey().unique(),
+  roomId: integer()
+    .notNull()
+    .references(() => room.id),
+  playerId: integer()
+    .notNull()
+    .references(() => player.id),
 });

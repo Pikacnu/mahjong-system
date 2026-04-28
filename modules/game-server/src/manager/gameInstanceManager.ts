@@ -1,6 +1,6 @@
 import { randomUUIDv7 } from 'bun';
-import { Game, type GameEndCallbackData } from '../type/game';
-import type { RunnerGateway, StorageGateway } from '../type/gateway';
+import { Game, type GameEndCallbackData } from '../classes/game';
+import type { RunnerGateway, StorageGateway } from '../classes/gateway';
 
 export class GameInstanceManager {
   private gameInstances = new Map<string, Game>();

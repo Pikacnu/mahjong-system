@@ -4,7 +4,7 @@ import {
   PLUGIN_RUNNER_HOSTNAME,
 } from 'utils';
 import { createRunnerGateway, createStorageGateway } from './src/type';
-import type { StorageGateway, RunnerGateway } from './src/type/gateway';
+import type { StorageGateway, RunnerGateway } from './src/classes/gateway';
 import { GameInstanceManager } from './src/manager/gameInstanceManager';
 
 const storageGateway: StorageGateway = createStorageGateway(

@@ -80,7 +80,7 @@ message StoreResourcesRequest {
   string data = 2;
   ResourceType resource_type = 3;
   ResourceSource source_type = 4;
-  repeated string dependencies = 5;
+  repeated MethodInfo dependencies = 5;
 }
 
 // StorePluginDefinitionRequest stores plugin runtime definition.

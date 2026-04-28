@@ -1,7 +1,10 @@
-import { unaryCall } from 'proto';
+import { MahjongCodeStorageV1, unaryCall } from 'proto';
 import { storageServiceClient } from '../handler/storage';
-import { StorageServiceClient } from 'proto/src/generated/services/storage';
-import { ResourceSource } from 'utils';
+import {
+  ResourceType,
+  StorageServiceClient,
+} from 'proto/src/generated/services/storage';
+import { NumberToResourceSource, ResourceSource } from 'utils';
 
 const GET = async (req: Request) => {
   const { methodInfo } = (await req.json()) as {
@@ -54,8 +57,6 @@ const GET = async (req: Request) => {
       },
     );
   }
-
-  return Response.json({});
 };
 
 async function isResourceExist(methodInfo: { name: string; version: number }) {
@@ -76,6 +77,18 @@ const POST = async (req: Request) => {
     };
     defaultStore?: Record<string, unknown>;
   };
+
+  if (!methodInfo || !methodInfo.name) {
+    return Response.json(
+      {
+        message: 'Invalid request body',
+      },
+      {
+        status: 400,
+      },
+    );
+  }
+
   try {
     const storePluginCodeRespose = await unaryCall(
       storageServiceClient.storePluginDefinition.bind(storageServiceClient),
@@ -89,7 +102,7 @@ const POST = async (req: Request) => {
             }
           : {}),
         sourceType: 1,
-      },
+      } as MahjongCodeStorageV1.StorePluginDefinitionRequest,
     );
     console.log('storePluginCodeRespose : ', storePluginCodeRespose);
   } catch (e) {
@@ -136,6 +149,7 @@ const DELETE = async (req: Request) => {
 };
 
 export const pluginHandler = {
+  GET,
   POST,
-  DELETE,
+  //DELETE,
 };

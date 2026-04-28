@@ -1,3 +1,5 @@
+import type { PlayerActionTileEntry, MahjongTile } from '../mahjong/type';
+
 export type scoreCalcPayload = {
   calcuation: {
     checkedYakuList: string[];
@@ -8,4 +10,22 @@ export type scoreCalcPayload = {
     isYakuman: boolean;
   };
   result: {};
+};
+
+export type ActionSharedDataPlayersData = {
+  playerId: string;
+  handCount: number;
+  openedTiles: PlayerActionTileEntry[];
+  isRiichi: boolean;
+};
+
+export type ActionSharedData = {
+  roundIndex: number;
+  currentPlayerId: string;
+  isCurrentPlayer: boolean;
+  playersData: ActionSharedDataPlayersData[];
+  lastAction?: PlayerActionTileEntry;
+  doraIndicators: MahjongTile[];
+  currentDiscard?: MahjongTile;
+  isFirstTurn: boolean;
 };

@@ -12,7 +12,7 @@ import {
   sourceType,
   pluginDefinitions,
 } from '../../db/schema';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { dependencies } from './../../db/schema';
 
 async function getMethodInfo(
@@ -41,16 +41,11 @@ async function getVersionInfoByMethod(
       id: versions.id,
       methodId: versions.methodId,
       version: versions.version,
-      sourceType: versions.sourceType,
     })
     .from(versions)
     .where(
       source_type
-        ? and(
-            eq(versions.methodId, methodId),
-            eq(versions.version, version),
-            eq(versions.sourceType, source_type),
-          )
+        ? and(eq(versions.methodId, methodId), eq(versions.version, version))
         : and(eq(versions.methodId, methodId), eq(versions.version, version)),
     )
     .limit(1)
@@ -216,15 +211,13 @@ export function createGrpcServer(): Server {
           eq(versions.resourceType, ResourceTypeRPCMap[resourceType]),
         );
       }
-      if (resourceSource !== undefined) {
-        filters.push(eq(versions.sourceType, SourceTypeRPCMap[resourceSource]));
-      }
       const versionData = await db
         .select({
           version: versions.version,
         })
         .from(versions)
         .where(and(...filters));
+
       if (!versionData || versionData.length === 0) {
         return callback({
           code: Status.NOT_FOUND,
@@ -265,22 +258,37 @@ export function createGrpcServer(): Server {
         .leftJoin(resource, eq(versions.resourceId, resource.id))
         .limit(1)
         .then((res) => res[0]);
-      if (!codeData || !codeData.code || !codeData.hash) {
+      if (!codeData || !codeData.code || codeData.hash == null) {
         return callback({
           code: Status.NOT_FOUND,
           details: `No code found for method ${methodInfo.name} version ${methodInfo.version}`,
         });
       }
-      const hashBuffer = Buffer.alloc(8);
-      hashBuffer.writeBigInt64BE(codeData.hash);
+      // ensure bigint -> 8-byte buffer, DB may return bigint or string
+      let hashBuffer: Buffer;
+      try {
+        const hashBigInt =
+          typeof codeData.hash === 'bigint'
+            ? codeData.hash
+            : BigInt(codeData.hash);
+        hashBuffer = Buffer.alloc(8);
+        hashBuffer.writeBigInt64BE(hashBigInt);
+      } catch (e) {
+        hashBuffer = Buffer.from(String(codeData.hash));
+      }
       callback(null, {
         code: codeData.code,
         hash: hashBuffer,
       });
     },
     storeResources: async (call, callback) => {
-      const { methodInfo, data, sourceType, resourceType, dependencies } =
-        call.request;
+      const {
+        methodInfo,
+        data,
+        sourceType,
+        resourceType,
+        dependencies: deps,
+      } = call.request;
 
       if (!methodInfo || !data || !sourceType || !resourceType) {
         return callback({
@@ -290,7 +298,7 @@ export function createGrpcServer(): Server {
         });
       }
 
-      if (!dependencies) {
+      if (!deps || !Array.isArray(deps)) {
         return callback({
           code: Status.INVALID_ARGUMENT,
           details: 'Missing dependencies in request',
@@ -316,7 +324,8 @@ export function createGrpcServer(): Server {
               .returning()
               .then((res) => res[0]);
           }
-          const versionData = await tx
+
+          const existingVersion = await tx
             .select()
             .from(versions)
             .where(
@@ -327,13 +336,17 @@ export function createGrpcServer(): Server {
             )
             .limit(1)
             .then((res) => res[0]);
-          if (versionData) {
+          if (existingVersion) {
             throw new Error(
               `Version ${methodInfo.version} for method ${methodInfo.name} already exists`,
             );
           }
+
+          // compute hash using Bun.hash (returns BigInt)
           const hash = Bun.hash(data);
-          const resourceData = await tx
+
+          // insert or lookup resource by hash
+          let resourceData = await tx
             .insert(resource)
             .values({
               code: data,
@@ -343,37 +356,91 @@ export function createGrpcServer(): Server {
             .then((res) => res[0]);
 
           if (!resourceData) {
-            throw new Error('Failed to insert resource');
+            resourceData = await tx
+              .select()
+              .from(resource)
+              .where(eq(resource.hash, BigInt(hash)))
+              .limit(1)
+              .then((res) => res[0]);
+          }
+
+          if (!resourceData) {
+            throw new Error('Failed to insert or lookup resource');
           }
 
           const resourceId = resourceData.id;
 
-          await tx.insert(versions).values({
-            version: methodInfo.version,
-            methodId: methodData!.id,
-            resourceId,
-            resourceType: ResourceTypeRPCMap[resourceType],
-            sourceType: SourceTypeRPCMap[sourceType],
-          });
-
-          dependencies.forEach(async (dep) => {
-            const depMethodData = await tx
-              .select()
-              .from(method)
-              .where(eq(method.name, dep))
-              .limit(1)
-              .then((res) => res[0]);
-            if (!depMethodData) {
-              throw new Error(`Dependency method ${dep} not found`);
-            }
-            await tx.insert(versions).values({
+          const insertedVersion = await tx
+            .insert(versions)
+            .values({
               version: methodInfo.version,
-              methodId: depMethodData.id,
+              methodId: methodData!.id,
               resourceId,
               resourceType: ResourceTypeRPCMap[resourceType],
-              sourceType: SourceTypeRPCMap[sourceType],
-            });
-          });
+            })
+            .returning()
+            .then((res) => res[0]);
+
+          if (!insertedVersion) {
+            throw new Error('Failed to insert version');
+          }
+
+          // for each dependency, resolve a concrete versions.id and insert hard-pin
+          for (const dep of deps) {
+            if (!dep || !dep.name) throw new Error('Invalid dependency entry');
+
+            const depMethod = await tx
+              .select()
+              .from(method)
+              .where(eq(method.name, dep.name))
+              .limit(1)
+              .then((res) => res[0]);
+
+            if (!depMethod) {
+              throw new Error(`Dependency method ${dep.name} not found`);
+            }
+
+            let dependencyVersionRow;
+            if (dep.version === -1 || dep.version === undefined) {
+              dependencyVersionRow = await tx
+                .select({ id: versions.id, version: versions.version })
+                .from(versions)
+                .where(eq(versions.methodId, depMethod.id))
+                .orderBy(desc(versions.version))
+                .limit(1)
+                .then((res) => res[0]);
+              if (!dependencyVersionRow)
+                throw new Error(`No versions found for dependency ${dep.name}`);
+            } else if (typeof dep.version === 'number') {
+              dependencyVersionRow = await tx
+                .select({ id: versions.id, version: versions.version })
+                .from(versions)
+                .where(
+                  and(
+                    eq(versions.methodId, depMethod.id),
+                    eq(versions.version, dep.version),
+                  ),
+                )
+                .limit(1)
+                .then((res) => res[0]);
+              if (!dependencyVersionRow)
+                throw new Error(
+                  `Dependency ${dep.name}@${dep.version} not found`,
+                );
+            } else {
+              throw new Error(
+                'Semantic version constraints not supported; use numeric version or -1 for latest',
+              );
+            }
+
+            await tx
+              .insert(dependencies)
+              .values({
+                sourceVersionId: insertedVersion.id,
+                dependencyVersionId: dependencyVersionRow.id,
+              })
+              .onConflictDoNothing();
+          }
 
           callback(null, {});
         })

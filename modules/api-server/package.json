@@ -10,6 +10,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "acorn": "^8.16.0",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
     "proto": "workspace:*",

@@ -1,3 +1,4 @@
+import type { ActionSharedData } from '.';
 import type { GameSnapshot, MahjongTile, PlayerAction } from '../mahjong/type';
 
 // Mirrors storage.proto::MethodInfo
@@ -11,6 +12,16 @@ export enum ResourceSource {
   BUILTIN = 'BUILTIN',
   USER = 'USER',
 }
+
+export const ResourceSourceToNumber: Record<ResourceSource, number> = {
+  [ResourceSource.BUILTIN]: 0,
+  [ResourceSource.USER]: 1,
+};
+
+export const NumberToResourceSource: Record<number, ResourceSource> = {
+  0: ResourceSource.BUILTIN,
+  1: ResourceSource.USER,
+};
 
 export enum PluginCapability {
   Lifecycle = 'lifecycle',
@@ -56,6 +67,7 @@ export enum DecisionHookType {
   EvaluateAvailableActions = 'onEvaluateAvailableActions',
   ValidateAction = 'onValidateAction',
   ResolveAction = 'onResolveAction',
+  EvaluateHand = 'onEvaluateHand',
   CalculateScore = 'onCalculateScore',
 }
 
@@ -83,6 +95,7 @@ export type PluginHookDefinition = {
 export enum PluginActionType {
   STANDARD = 'STANDARD',
   CUSTOM_PLUGIN = 'CUSTOM_PLUGIN',
+  EVALUATION = 'EVALUATION',
 }
 
 export type PluginActionDefinition = {
@@ -137,12 +150,9 @@ export type PluginHookPayloads = {
     tiles: MahjongTile[];
     discardedTiles?: Set<MahjongTile>;
   };
-  [DecisionHookType.CalculateScore]: {
-    winnerPlayerId: string;
-    winningTiles: MahjongTile[];
-    finalPlayerScores: Record<string, number>;
-    discardedTiles?: Set<MahjongTile>;
-  };
+  [DecisionHookType.EvaluateHand]: Omit<ActionSharedData, 'isCurrentPlayer'>;
+  [DecisionHookType.CalculateScore]: Omit<ActionSharedData, 'isCurrentPlayer'> &
+    any;
 };
 
 export type PluginHookContext<StorageType, PayloadType> = {

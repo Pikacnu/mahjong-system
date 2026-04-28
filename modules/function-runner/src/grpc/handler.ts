@@ -44,7 +44,6 @@ export function createFunctionRunnerGRPCHandler({
     const defaultStore = decodeFromBytes(response.defaultStore) ?? {};
 
     return {
-      isStateful: response.isStateful,
       defaultStore,
       dependencies: response.dependencies || [],
     };
@@ -303,7 +302,6 @@ export function createFunctionRunnerGRPCHandler({
         );
       }
     },
-    runYukuCheck: async (call, callback) => {},
   } as MahjongRunnerV1.RunnerServiceServer);
   return server;
 }
