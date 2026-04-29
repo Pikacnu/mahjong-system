@@ -632,7 +632,7 @@ export class Round {
             console.warn('Player not found for score patch:', playerId);
             break;
           }
-          player.setScore(player.getScore() + delta);
+          player.adjustScore(delta);
           break;
         }
         case PlayerStatusPatches.PlayerHandTile: {
@@ -693,55 +693,50 @@ export class Round {
       fu: 0,
       yakuList: [] as string[],
     };
-    // get Final Storage
-    evaluationResult?.forEach((evaluationItem) => {
-      if (!evaluationItem.pluginAction) return null;
-      const evalAction = evaluationItem.pluginAction.filter(
-        (action) => action.type === PluginActionType.EVALUATION,
-      );
-      Object.entries(evalAction).forEach(([key, value]) => {
-        if (key in tempStorage) {
-          const targetVal = tempStorage[key as keyof typeof tempStorage];
-          const storeTargetType = targetVal;
-          if (Array.isArray(targetVal)) {
-            if (Array.isArray(value)) {
-              tempStorage[key] = [...targetVal, ...value];
+
+    // Normalize and merge plugin evaluation payloads into tempStorage
+    if (Array.isArray(evaluationResult)) {
+      for (const evaluationItem of evaluationResult) {
+        const rawActions = evaluationItem.pluginAction || [];
+        const evalActions = Array.isArray(rawActions)
+          ? rawActions.filter(
+              (a: any) => a && a.type === PluginActionType.EVALUATION,
+            )
+          : [];
+
+        for (const act of evalActions) {
+          const payload = (act && (act as any).payload) ?? act;
+          if (!payload || typeof payload !== 'object') continue;
+          for (const [k, v] of Object.entries(payload)) {
+            if (k in tempStorage) {
+              const targetVal = tempStorage[k];
+              if (Array.isArray(targetVal)) {
+                tempStorage[k] = targetVal.concat(Array.isArray(v) ? v : [v]);
+                continue;
+              }
+              if (typeof targetVal === 'number' && typeof v === 'number') {
+                tempStorage[k] = targetVal + v;
+                continue;
+              }
+              if (
+                typeof targetVal === 'object' &&
+                targetVal !== null &&
+                typeof v === 'object' &&
+                v !== null &&
+                !Array.isArray(v)
+              ) {
+                tempStorage[k] = { ...targetVal, ...(v as object) };
+                continue;
+              }
+              // Fallback: overwrite
+              tempStorage[k] = v;
             } else {
-              tempStorage[key] = [...targetVal, value];
+              tempStorage[k] = v;
             }
           }
-          switch (typeof targetVal) {
-            case 'number': {
-              if (typeof value === 'number') {
-                tempStorage[key] = targetVal + value;
-              } else {
-                console.warn(
-                  `Type mismatch for key ${key}: expected number but got ${typeof value}`,
-                );
-              }
-              break;
-            }
-            case 'object': {
-              if (typeof value === 'object' && !Array.isArray(value)) {
-                tempStorage[key] = { ...targetVal, ...value };
-              } else {
-                console.warn(
-                  `Type mismatch for key ${key}: expected object but got ${typeof value}`,
-                );
-              }
-              break;
-            }
-            default: {
-              console.warn(
-                `Unsupported target type for key ${key}: ${typeof targetVal}`,
-              );
-            }
-          }
-        } else {
-          tempStorage[key] = value;
         }
-      });
-    });
+      }
+    }
 
     const scoreCalcResult = await this.modulePluginManager?.runHook({
       hook: DecisionHookType.CalculateScore,
@@ -750,6 +745,56 @@ export class Round {
     });
     // Todo: Complete score Calculation flow
     // Merge score calculation results
+
+    // ScoreCalc Hook required to modify global storage variable
+    // Named "scoreDistribution"
+    // and it should run by the priority
+    // then the last scoreDistribution patch will used
+
+    // format:
+    // {
+    //   [playerID:string]:score:number
+    // }
+
+    let scoreDistribution: unknown;
+
+    const scoreResultsArray = Array.isArray(scoreCalcResult)
+      ? [...scoreCalcResult].reverse()
+      : [];
+    for (const result of scoreResultsArray) {
+      const targetStoragePatch = result.storagePatch?.filter(
+        (patch) => patch.key === 'scoreDistribution' && !!patch.value,
+      )[0];
+      if (targetStoragePatch) {
+        scoreDistribution = targetStoragePatch.value;
+        break;
+      }
+    }
+
+    if (scoreDistribution && typeof scoreDistribution === 'object') {
+      for (const [playerID, score] of Object.entries(
+        scoreDistribution as any,
+      )) {
+        const player = this.players.get(playerID);
+        if (!player) {
+          console.warn(
+            `Player not found for score distribution patch: ${playerID}`,
+          );
+          continue;
+        }
+        const numericScore = Number(score);
+        if (Number.isFinite(numericScore)) {
+          player.adjustScore(numericScore);
+        } else {
+          console.warn(`Invalid score for player ${playerID}:`, score);
+        }
+      }
+    } else {
+      console.error(
+        'Invalid or missing score distribution from plugins:',
+        scoreDistribution,
+      );
+    }
   }
 
   private async runHook<HookName extends HookType>(data: {

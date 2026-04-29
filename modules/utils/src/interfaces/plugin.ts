@@ -69,6 +69,7 @@ export enum DecisionHookType {
   ResolveAction = 'onResolveAction',
   EvaluateHand = 'onEvaluateHand',
   CalculateScore = 'onCalculateScore',
+  ScoreDistribution = 'onScoreDistribution',
 }
 
 // Backward compatible alias for older naming.
@@ -153,6 +154,12 @@ export type PluginHookPayloads = {
   [DecisionHookType.EvaluateHand]: Omit<ActionSharedData, 'isCurrentPlayer'>;
   [DecisionHookType.CalculateScore]: Omit<ActionSharedData, 'isCurrentPlayer'> &
     any;
+  [DecisionHookType.ScoreDistribution]: Omit<
+    ActionSharedData,
+    'isCurrentPlayer'
+  > & {
+    originalScore: number;
+  };
 };
 
 export type PluginHookContext<StorageType, PayloadType> = {
@@ -236,9 +243,7 @@ export interface GameStatusPatchesArgument {
   [GameStatusPatches.GameStats]: {
     stats: Record<string, unknown>;
   };
-  [GameStatusPatches.GameEnd]: {
-    finalPlayerScores: Record<string, number>;
-  };
+  [GameStatusPatches.GameEnd]: {};
 }
 
 export type PatchesArgument = GameStatusPatchesArgument &

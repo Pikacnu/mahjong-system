@@ -15,6 +15,10 @@ export class Player {
     this.score = score;
   }
 
+  public adjustScore(delta: number): void {
+    this.score += delta;
+  }
+
   public getScore(): number {
     return this.score;
   }
