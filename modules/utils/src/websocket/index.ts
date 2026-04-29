@@ -1,7 +1,8 @@
-export enum MessageEnum {
+export enum MessageSourceEnum {
   System,
   Game,
   Room,
+  Player,
 }
 
 export enum RoomMessageEnum {
@@ -35,6 +36,8 @@ export enum GameMessageEnum {
   PlayerTsumo,
   PlayerRiichi,
 
+  RoundStatusChanged,
+
   ShowActions,
   ShowAvailableActions,
 
@@ -44,10 +47,24 @@ export enum GameMessageEnum {
   ShowInfo,
 }
 
-export type MessageEnums = {
-  [MessageEnum.System]: never;
-  [MessageEnum.Game]: GameMessageEnum;
-  [MessageEnum.Room]: RoomMessageEnum;
+export enum PlayerMessageEnum {
+  PlayerConnected,
+  PlayerJoins,
+  PlayerLeaves,
+
+  PlayerReady,
+  PlayerNotReady,
+
+  PlayerDrawsTile,
+  PlayerDiscardsTile,
+  PlayerPerformsAction,
+}
+
+export type CommunicationMessageTypes = {
+  [MessageSourceEnum.System]: never;
+  [MessageSourceEnum.Game]: GameMessageEnum;
+  [MessageSourceEnum.Room]: RoomMessageEnum;
+  [MessageSourceEnum.Player]: PlayerMessageEnum;
 };
 
 export enum GameEndTypeEnum {
@@ -129,6 +146,9 @@ export type GameMessagePayloads = {
     playerId: string;
     info: unknown;
   };
+  [GameMessageEnum.RoundStatusChanged]: {
+    roundStatus: any;
+  };
 };
 
 // Payload map for Room message types (basic shapes, adjust as needed)
@@ -143,17 +163,17 @@ export type RoomMessagePayloads = {
 };
 
 export type MessagePayloadType<
-  T extends MessageEnum,
-  T2 extends MessageEnums[T] = MessageEnums[T],
-> = T extends MessageEnum.Game
+  T extends MessageSourceEnum,
+  T2 extends CommunicationMessageTypes[T] = CommunicationMessageTypes[T],
+> = T extends MessageSourceEnum.Game
   ? GameMessagePayloads[T2 & keyof GameMessagePayloads]
-  : T extends MessageEnum.Room
+  : T extends MessageSourceEnum.Room
     ? RoomMessagePayloads[T2 & keyof RoomMessagePayloads]
     : never;
 
 export type Message<
-  T extends MessageEnum,
-  T2 extends MessageEnums[T],
+  T extends MessageSourceEnum,
+  T2 extends CommunicationMessageTypes[T] = CommunicationMessageTypes[T],
 > = T extends any
   ? {
       sourceType: T;

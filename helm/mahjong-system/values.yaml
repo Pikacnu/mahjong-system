@@ -1,0 +1,61 @@
+replicaCount: 1
+imagePullSecrets: []
+
+services:
+  function-storage:
+    enabled: true
+    image:
+      repository: pikacnu/function-storage
+      tag: latest
+    port: 3000
+    resources: {}
+  function-runner:
+    enabled: true
+    image:
+      repository: pikacnu/function-runner
+      tag: latest
+    port: 8080
+    resources: {}
+  game-runner:
+    enabled: true
+    image:
+      repository: pikacnu/game-runner
+      tag: latest
+    port: 3000
+    resources: {}
+  api-server:
+    enabled: true
+    image:
+      repository: pikacnu/api-server
+      tag: latest
+    port: 3000
+    resources: {}
+
+postgresql:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: postgres
+    tag: "18"
+  port: 5432
+  username: mahjong
+  password: mahjongpassword
+  database: mahjongdb
+  # Optional initialization scripts that will be mounted into
+  # /docker-entrypoint-initdb.d in the postgres container. Provide a
+  # map of filename: script-content. Example:
+  # initdbScripts:
+  #   01-init-schema.sql: |-
+  #     -- SQL initialization example (executed by POSTGRES_USER)
+  #     CREATE USER docker;
+  #     CREATE DATABASE docker;
+  #     GRANT ALL PRIVILEGES ON DATABASE docker TO docker;
+  initdbScripts: {}
+  persistence:
+    enabled: true
+    size: 1Gi
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,0 +1,9 @@
+// enum PlayerAction {
+//   DrawTile = 0;
+//   Chi = 1;
+//   Pon = 2;
+//   Kan = 3;
+//   Ron = 4;
+//   Tsumo = 5;
+//   Riichi = 6;
+// }

@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package mahjong.game_server.v1;
+import "google/protobuf/empty.proto";
+
+enum RoomStatus {
+  WAITING = 0;
+  IN_PROGRESS = 1;
+  FINISHED = 2;
+}
+
+enum RoomEvent {
+  PLAYER_JOINED = 0;
+  PLAYER_LEFT = 1;
+  GAME_STARTED = 2;
+  GAME_ENDED = 3;
+}
+
+
+// CreateRoomRequest contains the information needed to create a new game room, including the room name and an optional room ID.
+message CreateRoomRequest {
+  string room_id = 2;
+}
+
+// CreateRoomResponse contains the result of creating a game room, including the room ID.
+message CreateRoomResponse {
+  string room_id = 1;
+}
+
+// SendRoomEventRequest contains the information needed to send a room event, including the room ID and the event type.
+message SendRoomEventRequest {
+  string room_id = 1;
+  RoomEvent event = 2;
+  bytes payload = 3;
+}
+
+message RoomChannelInfo {
+  string room_id = 1;
+  RoomStatus status = 2;
+  optional bytes payload =3;
+}
+
+message RoomEventMessage {
+  RoomEvent event = 1;
+  optional bytes payload = 2;
+}
+
+message ReactionMessage {
+  int32 player_id = 1;
+  bytes payload = 3;
+}
+
+service RoomServices {
+  // CreateRoom creates a new game room with the specified name and returns the room ID.
+  rpc CreateRoom (CreateRoomRequest) returns (CreateRoomResponse);
+  // SendRoomEvent sends a room event (e.g., player joined, game started) to all clients in the specified room.
+  rpc SendRoomEvent (SendRoomEventRequest) returns (google.protobuf.Empty);
+  // SubscribeRoomEvents allows clients to subscribe to events in a specific room.
+  rpc SubscribeRoomEvents (RoomChannelInfo) returns (stream RoomEventMessage);
+  // GameChannel allows clients to send and receive game-specific messages in a particular room.
+  rpc GameChannel (stream ReactionMessage) returns (stream ReactionMessage);
+}

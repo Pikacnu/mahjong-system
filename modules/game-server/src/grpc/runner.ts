@@ -85,7 +85,6 @@ export function createStorageGateway(address: string): StorageGateway {
       );
 
       return {
-        isStateful: response.isStateful,
         defaultStore: decodeFromBytes(response.defaultStore),
         dependencies: response.dependencies,
       };

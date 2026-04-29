@@ -30,8 +30,7 @@ export class GameInstanceManager {
     );
   }
 
-  public createGameInstance(): string {
-    const gameId = randomUUIDv7();
+  public createGameInstance(gameId = randomUUIDv7()): string {
     if (this.gameInstances.has(gameId)) {
       throw new Error(`Game instance with id ${gameId} already exists`);
     }

@@ -27,7 +27,6 @@ export type StorageGateway = {
     methodInfo: MethodInfo;
     resourceSource?: ResourceSource;
   }): Promise<{
-    isStateful: boolean;
     defaultStore: unknown;
     dependencies: MethodInfo[];
   }>;

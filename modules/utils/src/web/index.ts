@@ -1,12 +1,10 @@
-import { serve } from 'bun';
+import { serve, type Serve } from 'bun';
 import { HOSTNAME, PORT } from '../config';
 
-type ServeFunctionConfig = Parameters<typeof serve>[0];
-
-export function createWebHandler(
-  config: Partial<ServeFunctionConfig>,
-): ReturnType<typeof serve> {
-  const server = serve({
+export function createWebHandler<T extends unknown, T2 extends string>(
+  config: Serve.Options<T, T2>,
+): ReturnType<typeof serve<T>> {
+  const server = serve<T>({
     ...config,
     port: PORT,
     hostname: HOSTNAME,
@@ -30,7 +28,7 @@ export function createWebHandler(
         );
       return res;
     },
-  } as ServeFunctionConfig);
+  } as Serve.Options<T, T2>);
 
   return server;
 }

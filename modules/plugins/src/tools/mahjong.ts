@@ -1,34 +1,38 @@
-export const TileSuitNumberToString = {
-  0: 'm',
-  1: 'p',
-  2: 's',
-  3: 'z',
+import { type MahjongTile, PlayerAction } from 'utils';
+
+/**
+ * Utility tools for Mahjong logic calculation.
+ * These tools MUST remain synchronous.
+ */
+
+export const MahjongTools = {
+  /**
+   * Sorts tiles by type and then by index.
+   */
+  sortTiles(tiles: MahjongTile[]): MahjongTile[] {
+    return [...tiles].sort((a, b) => {
+      if (a.type !== b.type) return a.type - b.type;
+      return a.index - b.index;
+    });
+  },
+  /**
+   * Creates a new tile instance.
+   */
+  createTile(type: number, index: number): MahjongTile {
+    return { type, index };
+  },
+  /**
+   * Creates a tile instance from a numeric ID.
+   */
+  fromNumericId(id: number): MahjongTile {
+    const type = Math.floor(id / 100);
+    const index = id % 100;
+    return { type, index };
+  },
+  /**
+   * Converts a tile to a numeric ID for easy comparison and storage.
+   */
+  toNumericId(tile: MahjongTile): number {
+    return tile.type * 100 + tile.index;
+  },
 };
-
-export class MahjongTile {
-  public suit: number = 0;
-  public id: number = 0;
-
-  constructor(suit: number, id: number) {
-    this.suit = suit;
-    this.id = id;
-  }
-
-  public toNumber(): number {
-    return this.suit * 100 + this.id;
-  }
-
-  public static getMahjongfromNumber(mahjongDef: number): MahjongTile {
-    const suit = Math.floor(mahjongDef / 100);
-    const id = mahjongDef % 100;
-    return new MahjongTile(suit, id);
-  }
-
-  public isEqual(other: MahjongTile): boolean {
-    return this.suit === other.suit && this.id === other.id;
-  }
-
-  public toString(): string {
-    return `${this.id}${TileSuitNumberToString[this.suit as keyof typeof TileSuitNumberToString]}`;
-  }
-}

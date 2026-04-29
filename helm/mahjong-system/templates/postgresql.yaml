@@ -1,0 +1,81 @@
+{{- if .Values.postgresql.enabled }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "mahjong-system.postgresService" . }}-creds
+type: Opaque
+stringData:
+  postgres-password: {{ .Values.postgresql.password }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mahjong-system.postgresService" . }}
+spec:
+  ports:
+    - port: {{ .Values.postgresql.port }}
+      targetPort: {{ .Values.postgresql.port }}
+  selector:
+    app.kubernetes.io/name: {{ include "mahjong-system.fullname" . }}
+    app.kubernetes.io/component: postgresql
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mahjong-system.fullname" . }}-postgresql
+  labels:
+    app.kubernetes.io/name: {{ include "mahjong-system.fullname" . }}
+    app.kubernetes.io/component: postgresql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "mahjong-system.fullname" . }}
+      app.kubernetes.io/component: postgresql
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "mahjong-system.fullname" . }}
+        app.kubernetes.io/component: postgresql
+    spec:
+      containers:
+        - name: postgresql
+          image: "{{ .Values.postgresql.image.registry }}/{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.postgresql.port }}
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mahjong-system.postgresService" . }}-creds
+                  key: postgres-password
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.database | quote }}
+          volumeMounts:
+{{- if .Values.postgresql.initdbScripts }}
+            - name: initdb-scripts
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+{{- end }}
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+{{- if .Values.postgresql.initdbScripts }}
+        - name: initdb-scripts
+          configMap:
+            name: {{ include "mahjong-system.fullname" . }}-postgresql-initdb
+            defaultMode: 0644
+{{- end }}
+{{- if .Values.postgresql.persistence.enabled }}
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: {{ include "mahjong-system.fullname" . }}-postgresql-pvc
+{{- else }}
+        - name: postgres-data
+          emptyDir: {}
+{{- end }}
+{{- end }}

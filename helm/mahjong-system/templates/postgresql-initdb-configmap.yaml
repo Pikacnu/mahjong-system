@@ -1,0 +1,11 @@
+{{- if and .Values.postgresql.enabled .Values.postgresql.initdbScripts }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mahjong-system.fullname" . }}-postgresql-initdb
+data:
+{{- range $fname, $content := .Values.postgresql.initdbScripts }}
+  {{ $fname }}: |-
+{{ $content | nindent 4 }}
+{{- end }}
+{{- end }}

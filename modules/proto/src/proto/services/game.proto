@@ -1,4 +1,0 @@
-syntax = "proto3";
-
-package mahjong.game_server.v1;
-

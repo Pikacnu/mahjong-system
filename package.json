@@ -1,7 +1,9 @@
 {
   "name": "mahjong-things",
   "scripts": {
-    "gen:proto": "bun --filter proto generate"
+    "gen:proto": "bun --filter proto generate",
+    "cluster:create": "kind create cluster --name mahjong-system --config ./cluster/kind-config.yaml",
+    "cluster:delete": "kind delete cluster --name mahjong-system"
   },
   "dependencies": {
     "acorn": "^8.16.0",

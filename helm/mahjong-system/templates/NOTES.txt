@@ -1,0 +1,11 @@
+Thank you for installing mahjong-system chart.
+
+This chart deploys the selected services and a PostgreSQL instance.
+
+To see created services run:
+  kubectl get svc
+
+Database connection (from inside cluster):
+  postgresql://<username>:<password>@<service>:5432/<database>
+
+You can override credentials and images in helm values.

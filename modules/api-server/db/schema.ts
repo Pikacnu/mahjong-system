@@ -1,4 +1,11 @@
-import { pgSchema, integer, text, jsonb, pgEnum } from 'drizzle-orm/pg-core';
+import {
+  pgSchema,
+  integer,
+  text,
+  jsonb,
+  pgEnum,
+  serial,
+} from 'drizzle-orm/pg-core';
 
 export const schema = pgSchema('api-server');
 
@@ -35,39 +42,39 @@ export const gameSnapshots = schema.table('game_snapshots', {
 });
 
 export const game = schema.table('game', {
-  id: integer().primaryKey().unique(),
+  id: serial().primaryKey().unique(),
   createdAt: integer().notNull(),
   updatedAt: integer().notNull(),
 });
 
 export const room = schema.table('room', {
-  id: integer().primaryKey().unique(),
+  id: serial().primaryKey().unique(),
   status: roomStatusEnum().notNull().default('waiting'),
   createdAt: integer().notNull(),
   updatedAt: integer().notNull(),
 });
 
 export const player = schema.table('player', {
-  id: integer().primaryKey().unique(),
+  id: serial().primaryKey().unique(),
   name: text().notNull(),
 });
 
 export const gameRoomBinding = schema.table('game_room_binding', {
-  id: integer().primaryKey().unique(),
-  gameId: integer()
+  id: serial().primaryKey().unique(),
+  gameId: serial()
     .notNull()
     .references(() => game.id),
-  roomId: integer()
+  roomId: serial()
     .notNull()
     .references(() => room.id),
 });
 
 export const roomPlayerBinding = schema.table('room_player_binding', {
-  id: integer().primaryKey().unique(),
-  roomId: integer()
+  id: serial().primaryKey().unique(),
+  roomId: serial()
     .notNull()
     .references(() => room.id),
-  playerId: integer()
+  playerId: serial()
     .notNull()
     .references(() => player.id),
 });
