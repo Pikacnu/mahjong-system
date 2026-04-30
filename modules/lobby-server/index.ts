@@ -5,6 +5,7 @@ import {
   type Message,
 } from 'utils';
 import { validatePlayerMessage } from './src/utils';
+import { gameServiceClient } from './src/grpc/gameServer';
 
 const webServer = createWebHandler({
   fetch(req, server) {
@@ -26,6 +27,7 @@ const webServer = createWebHandler({
       server.upgrade(req, {
         data: {
           playerId,
+          gameId: '',
         },
       });
 
@@ -43,9 +45,11 @@ const webServer = createWebHandler({
   websocket: {
     data: {} as {
       playerId: string;
+      gameId: string;
     },
     open(ws) {
       console.log('WebSocket connection opened for player:', ws.data.playerId);
+      ws.subscribe(`player_${ws.data.playerId}`);
     },
     message(ws, message) {
       console.log(
@@ -63,19 +67,36 @@ const webServer = createWebHandler({
           const text = decoder.decode(message);
           parsedMessage = JSON.parse(text);
         }
+
         console.log(
           'Parsed message from player:',
           ws.data.playerId,
           'Parsed Message:',
           parsedMessage,
         );
-        const verifiedMessage = {
+
+        const verifiedMessage: any = {
           ...validatePlayerMessage(parsedMessage),
           sourceType: MessageSourceEnum.Player,
         };
 
         switch (verifiedMessage.messageType) {
+          case PlayerMessageEnum.PlayerConnected: {
+            if (!verifiedMessage.payload.gameId) {
+              throw new Error(
+                'gameId is required in payload for PlayerConnected message',
+              );
+            }
+            ws.subscribe(`game_${verifiedMessage.payload.gameId}`);
+            ws.data.gameId = verifiedMessage.payload.gameId;
+            break;
+          }
           default: {
+            if (!verifiedMessage.payload.gameId) {
+              throw new Error(
+                'gameId is required in payload for player messages',
+              );
+            }
           }
         }
       } catch (e) {
@@ -106,4 +127,22 @@ const webServer = createWebHandler({
       );
     },
   },
+});
+
+const sendMessage = (topic: string, message: unknown) => {
+  webServer.publish(topic, JSON.stringify(message));
+};
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
+});
+
+process.on('SIGINT', () => {
+  console.log('Received SIGINT. Shutting down gracefully...');
+  webServer.stop();
 });

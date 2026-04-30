@@ -1,9 +1,8 @@
-import { randomUUIDv7 } from 'bun';
 import { Game, type GameEndCallbackData } from '../classes/game';
 import type { RunnerGateway, StorageGateway } from '../classes/gateway';
 
 export class GameInstanceManager {
-  private gameInstances = new Map<string, Game>();
+  private gameInstances = new Map<number, Game>();
   private static instance: GameInstanceManager | null = null;
   private static runnerGateway: RunnerGateway | null = null;
   private static storageGateway: StorageGateway | null = null;
@@ -30,7 +29,9 @@ export class GameInstanceManager {
     );
   }
 
-  public createGameInstance(gameId = randomUUIDv7()): string {
+  public createGameInstance(
+    gameId = crypto.getRandomValues(new Uint32Array(1))[0]!,
+  ): number {
     if (this.gameInstances.has(gameId)) {
       throw new Error(`Game instance with id ${gameId} already exists`);
     }
@@ -40,19 +41,20 @@ export class GameInstanceManager {
     const gameInstance = new Game({
       runnergRPCClient: GameInstanceManager.runnerGateway!,
       storagegRPCClient: GameInstanceManager.storageGateway!,
-      gameEndCallback: ((gameId: string) => {
+      gameEndCallback: ((gameId: number) => {
         return ((data: GameEndCallbackData) => {
           // Handle game/round end logic here, e.g., logging, cleanup, notifying other services, etc.
           console.log(`Game with id ${gameId} ended. Data:`, data);
           this.removeGameInstance(gameId);
         }).bind(this);
       }).bind(this, gameId),
+      roomId: `${gameId}`,
     });
     this.gameInstances.set(gameId, gameInstance);
     return gameId;
   }
 
-  public getGameInstance(gameId: string): Game {
+  public getGameInstance(gameId: number): Game {
     const gameInstance = this.gameInstances.get(gameId);
     if (!gameInstance) {
       throw new Error(`Game instance with id ${gameId} does not exist`);
@@ -60,7 +62,7 @@ export class GameInstanceManager {
     return gameInstance;
   }
 
-  public removeGameInstance(gameId: string): void {
+  public removeGameInstance(gameId: number): void {
     const gameInstance = this.gameInstances.get(gameId);
     if (!gameInstance) {
       throw new Error(`Game instance with id ${gameId} does not exist`);
