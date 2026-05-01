@@ -27,7 +27,7 @@ CREATE TABLE "function_storage"."plugin_definitions" (
 CREATE TABLE "function_storage"."resource" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "function_storage"."resource_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"code" text NOT NULL,
-	"hash" text NOT NULL,
+	"hash" text NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "function_storage"."versions" (
