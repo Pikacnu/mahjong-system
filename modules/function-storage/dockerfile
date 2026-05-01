@@ -5,6 +5,7 @@ COPY package.json bun.lock ./
 COPY modules/proto /app/modules/proto
 COPY modules/utils /app/modules/utils
 RUN bun install
+RUN bun run proto:generate
 WORKDIR /app/modules/function-storage
 RUN bun run generate
 RUN bun build index.ts --compile --outfile function-storage

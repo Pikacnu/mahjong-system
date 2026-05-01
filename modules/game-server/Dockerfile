@@ -5,9 +5,10 @@ COPY package.json bun.lock ./
 COPY modules/proto /app/modules/proto
 COPY modules/utils /app/modules/utils
 RUN bun install
+RUN bun run proto:generate
 WORKDIR /app/modules/game-server
-RUN if grep -q '"generate"' package.json 2>/dev/null; then bun run generate || true; fi
-RUN if grep -q '"build"' package.json 2>/dev/null; then bun run build || true; fi
+RUN bun run generate
+#RUN if grep -q '"build"' package.json 2>/dev/null; then bun run build || true; fi
 RUN bun build index.ts --compile --outfile game-server || true
 
 FROM oven/bun
