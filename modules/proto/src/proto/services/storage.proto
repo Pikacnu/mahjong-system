@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package mahjong.code_storage.v1;
 
+import "common.proto";
 import "google/protobuf/empty.proto";
 
 // MethodInfo represents the metadata for a piece of code, including its name and version.
