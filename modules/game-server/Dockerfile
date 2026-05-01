@@ -8,7 +8,7 @@ RUN bun install
 RUN apt-get update && apt-get install -y protobuf-compiler
 RUN bun run gen:proto
 WORKDIR /app/modules/game-server
-RUN bun run generate
+#RUN bun run generate
 #RUN if grep -q '"build"' package.json 2>/dev/null; then bun run build || true; fi
 RUN bun build index.ts --compile --outfile game-server || true
 
