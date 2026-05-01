@@ -1,4 +1,4 @@
-import { GameEvent } from 'proto/src/generated/services/room';
+import { Event } from 'proto/src/generated/services/room';
 import {
   type HookType,
   MahjongGameRoundStatus,
@@ -7,6 +7,7 @@ import {
   type GameNextResponse,
   type MahjongTile,
   encodeToBytes,
+  GameMessageEnum,
 } from 'utils';
 import {
   PluginManager,
@@ -227,7 +228,7 @@ export class Game {
     this.connection?.sendEvent({
       playerId,
       gameId: this.gameId!,
-      event: event,
+      event: RoundEventToEventMap[event],
       payload: encodeToBytes(message),
     });
   }
@@ -242,7 +243,7 @@ export class Game {
     } as any;
     const bytes = encodeToBytes(message) as Buffer;
     connectionManager.broadcastToRoom(this.gameId!, {
-      event,
+      event: RoundEventToEventMap[event],
       playerId: -1,
       payload: bytes,
       gameId: Number(this.gameId),
@@ -311,9 +312,15 @@ export class Game {
     }
   }
 
-  public processedReceivedRoomAction(event: GameEvent, payload: any): void {
+  public processedReceivedRoomAction(event: Event, payload: any): void {
     switch (event) {
-      case GameEvent.PlayerJoined: {
+      case Event.GAME_START: {
+        this.currentRound.next({
+          requestId: (this.currentRound as any).currentRequestId,
+        });
+        break;
+      }
+      case Event.PLAYER_JOINED: {
         if (
           this.currentRound.getStatus() !== MahjongGameRoundStatus.RoundStart
         ) {
@@ -323,7 +330,7 @@ export class Game {
         this.table.addPlayer(payload.playerId);
         break;
       }
-      case GameEvent.PlayerLeft: {
+      case Event.PLAYER_LEFT: {
         if (
           this.currentRound.getStatus() !== MahjongGameRoundStatus.RoundStart
         ) {
@@ -334,7 +341,17 @@ export class Game {
         break;
       }
       default: {
-        console.error('Not accepted room event type:', event);
+        try {
+          this.currentRound.next({
+            requestId: this.currentRound['currentRequestId'],
+            args: {
+              playerId: payload.playerId,
+              payload,
+            },
+          });
+        } catch (error) {
+          console.error('Error processing room action:', error);
+        }
       }
     }
   }
@@ -350,6 +367,34 @@ export class Game {
     this.table = new Table();
   }
 }
+
+const RoundEventToEventMap: Record<keyof GameMessagePayloads, Event> = {
+  [GameMessageEnum.PlayerGetsTile]: Event.PLAYER_GETS_TILE,
+  [GameMessageEnum.PlayerDrawsTile]: Event.PLAYER_DRAWS_TILE,
+  [GameMessageEnum.PlayerDiscardsTile]: Event.PLAYER_DISCARDS_TILE,
+  [GameMessageEnum.RoundStart]: Event.ROUND_START,
+  [GameMessageEnum.RoundEnd]: Event.ROUND_END,
+  [GameMessageEnum.PlayerChi]: Event.PLAYER_CHI,
+  [GameMessageEnum.PlayerPon]: Event.PLAYER_PON,
+  [GameMessageEnum.PlayerKan]: Event.PLAYER_KAN,
+  [GameMessageEnum.PlayerRon]: Event.PLAYER_RON,
+  [GameMessageEnum.PlayerTsumo]: Event.PLAYER_TSUMO,
+  [GameMessageEnum.PlayerRiichi]: Event.PLAYER_RIICHI,
+  [GameMessageEnum.ShowActions]: Event.SHOW_ACTIONS,
+  [GameMessageEnum.ShowAvailableActions]: Event.SHOW_AVAILABLE_ACTIONS,
+  [GameMessageEnum.ShowHint]: Event.SHOW_HINT,
+  [GameMessageEnum.ShowError]: Event.SHOW_ERROR,
+  [GameMessageEnum.ShowInfo]: Event.SHOW_INFO,
+  [GameMessageEnum.GameStart]: Event.GAME_START,
+  [GameMessageEnum.GameEnd]: Event.GAME_END,
+  [GameMessageEnum.ChangePlayerHand]: Event.CHANGE_PLAYER_HAND,
+  [GameMessageEnum.RoundStatusChanged]: Event.ROUND_STATUS_CHANGED,
+};
+
+const EventToRoundEventMap: Record<Event, keyof GameMessagePayloads> =
+  Object.fromEntries(
+    Object.entries(RoundEventToEventMap).map(([k, v]) => [v, k]),
+  ) as unknown as Record<Event, keyof GameMessagePayloads>;
 
 /*
 當回合開始時:

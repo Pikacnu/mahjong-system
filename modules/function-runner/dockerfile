@@ -1,12 +1,20 @@
 FROM oven/bun AS builder
 WORKDIR /app
-COPY . .
-RUN bun install --frozen-lockfile
-RUN bun build index.ts --compile --outfile function-runner
-
-FROM busybox
+COPY modules/function-runner /app/modules/function-runner
+COPY package.json bun.lock ./
+COPY modules/proto /app/modules/proto
+COPY modules/utils /app/modules/utils
+RUN bun install
+WORKDIR /app/modules/function-runner
+RUN if grep -q '"generate"' package.json 2>/dev/null; then bun run generate || true; fi
+RUN if grep -q '"build"' package.json 2>/dev/null; then bun run build || true; fi
+FROM oven/bun
 WORKDIR /app
-COPY --from=builder /app/function-runner .
-RUN chmod +x function-runner
-EXPOSE 3000
-CMD ["./function-runner"]
+# copy installed dependencies and source from builder
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/modules/function-runner ./modules/function-runner
+COPY --from=builder /app/modules/utils ./modules/utils
+COPY --from=builder /app/modules/proto ./modules/proto
+WORKDIR /app/modules/function-runner
+EXPOSE 4001
+CMD ["bun", "run", "index.ts"]

@@ -25,6 +25,8 @@ export enum GameMessageEnum {
   RoundStart,
   RoundEnd,
 
+  ChangePlayerHand,
+
   PlayerGetsTile,
   PlayerDrawsTile,
   PlayerDiscardsTile,
@@ -148,6 +150,9 @@ export type GameMessagePayloads = {
   };
   [GameMessageEnum.RoundStatusChanged]: {
     roundStatus: any;
+  };
+  [GameMessageEnum.ChangePlayerHand]: {
+    newHand: number[];
   };
 };
 

@@ -290,7 +290,12 @@ export function createGrpcServer(): Server {
         dependencies: deps,
       } = call.request;
 
-      if (!methodInfo || !data || !sourceType || !resourceType) {
+      if (
+        methodInfo === undefined ||
+        data === undefined ||
+        sourceType === undefined ||
+        resourceType === undefined
+      ) {
         return callback({
           code: Status.INVALID_ARGUMENT,
           details:
@@ -344,13 +349,14 @@ export function createGrpcServer(): Server {
 
           // compute hash using Bun.hash (returns BigInt)
           const hash = Bun.hash(data);
+          const hashStr = String(hash);
 
-          // insert or lookup resource by hash
+          // insert or lookup resource by hash (store hash as text to avoid overflow)
           let resourceData = await tx
             .insert(resource)
             .values({
               code: data,
-              hash: BigInt(hash),
+              hash: hashStr,
             })
             .returning()
             .then((res) => res[0]);
@@ -359,7 +365,7 @@ export function createGrpcServer(): Server {
             resourceData = await tx
               .select()
               .from(resource)
-              .where(eq(resource.hash, BigInt(hash)))
+              .where(eq(resource.hash, hashStr))
               .limit(1)
               .then((res) => res[0]);
           }

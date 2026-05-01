@@ -9,42 +9,42 @@ enum RoomStatus {
   FINISHED = 2;
 }
 
-enum GameEvent {
-  GameStart = 0;
-  GameEnd = 1;
+enum Event {
+  // 0 ~ 99: Game / Round Lifecycle
+  GAME_START = 0;
+  GAME_END = 1;
+  ROUND_START = 2;
+  ROUND_END = 3;
+  ROUND_STATUS_CHANGED = 4;
+  CHANGE_PLAYER_HAND = 5;
 
-  RoundStart = 2;
-  RoundEnd = 3;
+  // 100 ~ 199: Player Actions
+  PLAYER_DRAWS_TILE = 100;
+  PLAYER_DISCARDS_TILE = 101;
+  PLAYER_CHI = 102;
+  PLAYER_PON = 103;
+  PLAYER_KAN = 104;
+  PLAYER_RON = 105;
+  PLAYER_TSUMO = 106;
+  PLAYER_RIICHI = 107;
 
-  PlayerGetsTile = 4;
-  PlayerDrawsTile = 5;
-  PlayerDiscardsTile = 6;
+  // 200 ~ 299: Game Events / System Events
+  PLAYER_GETS_TILE = 200;
 
-  PlayerChi = 7;
-  PlayerPon = 8;
-  PlayerKan = 9;
-  PlayerRon = 10;
-  PlayerTsumo = 11;
-  PlayerRiichi = 12;
+  // 300 ~ 399: UI / Presentation
+  SHOW_ACTIONS = 300;
+  SHOW_AVAILABLE_ACTIONS = 301;
+  SHOW_HINT = 302;
+  SHOW_ERROR = 303;
+  SHOW_INFO = 304;
 
-  RoundStatusChanged = 13;
-
-  ShowActions = 14;
-  ShowAvailableActions = 15;
-
-  ShowHint = 16;
-  ShowError = 17;
-
-  ShowInfo = 18;
-
-  PlayerConnected = 19;
-  PlayerDisconnected = 20;
-
-  PlayerJoined = 21;
-  PlayerLeft = 22;
-
+  // 400 ~ 499: Connection / Session
+  PLAYER_CONNECTED = 400;
+  PLAYER_DISCONNECTED = 401;
+  PLAYER_JOINED = 402;
+  PLAYER_LEFT = 403;
+  CONNECTION_ESTABLISH = 404;
 }
-
 
 // CreateGameRequest contains the information needed to create a new game room, including the room name and an optional room ID.
 message CreateGameRequest {
@@ -59,7 +59,7 @@ message CreateGameResponse {
 // SendGameEventRequest contains the information needed to send a game event, including the game ID and the event type.
 message SendGameEventRequest {
   int32 game_id = 1;
-  GameEvent event = 2;
+  Event event = 2;
   bytes payload = 3;
 }
 
@@ -68,14 +68,14 @@ message GameChannelInfo {
 }
 
 message GameEventMessage {
-  GameEvent event = 1;
+  Event event = 1;
   optional bytes payload = 2;
 }
 
 message ReactionMessage {
-  int32 player_id = 1;
-  int32 game_id = 2;
-  GameEvent event = 3;
+  Event event = 1;
+  optional int32 player_id = 2;
+  int32 game_id = 3;
   bytes payload = 4;
 }
 

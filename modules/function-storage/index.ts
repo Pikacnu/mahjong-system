@@ -1,5 +1,6 @@
 import { PORT } from 'utils';
 
+import { runMigrate } from './db/migrater';
 import { createGrpcServer } from './src/grpc/handler';
 import { ServerCredentials } from '@grpc/grpc-js';
 
@@ -198,10 +199,12 @@ import { ServerCredentials } from '@grpc/grpc-js';
 // });
 
 // console.log(`Server running at http://${server.hostname}:${server.port}/`);
+await runMigrate();
+
 const grpcServer = createGrpcServer();
 
 grpcServer.bindAsync(
-  `${PORT}`,
+  `0.0.0.0:${PORT}`,
   ServerCredentials.createInsecure(),
   (err, port) => {
     if (err) {
@@ -209,7 +212,6 @@ grpcServer.bindAsync(
       return;
     }
     console.log(`gRPC Server running at ${port}`);
-    // grpcServer.start(); (Note: In modern @grpc/grpc-js, bindAsync followed by callback or start() is used)
   },
 );
 

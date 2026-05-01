@@ -98,6 +98,7 @@ export function createGrpcServer(manager: GameInstanceManager): Server {
       // Bidirectional streaming: bind a Connection to this call and route messages.
       const connection = connectionManager.createConnection();
       const connectionId = connection.getConnectionId();
+      let isBoundToGame = false;
 
       // forward outgoing messages from connection to client stream
       const outgoing = (msg: MahjongRoomV1.ReactionMessage) => {
@@ -124,6 +125,19 @@ export function createGrpcServer(manager: GameInstanceManager): Server {
           console.error('Failed to parse incoming payload:', e);
           return;
         }
+
+        if (!isBoundToGame) {
+          if (!gameId) {
+            console.error(
+              'First message must contain gameId to bind connection',
+            );
+            return;
+          }
+          boundGameId = gameId;
+          connectionManager.addConnectionToRoom(`${gameId}`, connectionId);
+          isBoundToGame = true;
+        }
+
         if (!gameId || !request.event) {
           // missing routing info
           return;

@@ -1,15 +1,20 @@
-import {
-  createWebHandler,
-  MessageSourceEnum,
-  PlayerMessageEnum,
-  type Message,
-} from 'utils';
+import { createWebHandler, MessageSourceEnum, PlayerMessageEnum } from 'utils';
 import { validatePlayerMessage } from './src/utils';
-import { gameServiceClient } from './src/grpc/gameServer';
+import { gameServices, gameServiceClient } from './src/grpc/gameServer';
 
 const webServer = createWebHandler({
   fetch(req, server) {
     const pathname = new URL(req.url).pathname;
+    if (pathname === '/health') {
+      return Response.json(
+        {
+          status: 'ok',
+        },
+        {
+          status: 200,
+        },
+      );
+    }
     if (pathname.startsWith('/ws')) {
       const playerId = new URL(req.url).searchParams.get('playerId');
 
@@ -35,10 +40,10 @@ const webServer = createWebHandler({
     }
     return Response.json(
       {
-        message: 'Hello from Lobby Server!',
+        message: 'Not Found',
       },
       {
-        status: 200,
+        status: 404,
       },
     );
   },
@@ -51,7 +56,7 @@ const webServer = createWebHandler({
       console.log('WebSocket connection opened for player:', ws.data.playerId);
       ws.subscribe(`player_${ws.data.playerId}`);
     },
-    message(ws, message) {
+    async message(ws, message) {
       console.log(
         'Message received from player:',
         ws.data.playerId,
@@ -81,22 +86,82 @@ const webServer = createWebHandler({
         };
 
         switch (verifiedMessage.messageType) {
+          // @ts-ignore
           case PlayerMessageEnum.PlayerConnected: {
-            if (!verifiedMessage.payload.gameId) {
-              throw new Error(
-                'gameId is required in payload for PlayerConnected message',
+            if (!ws.data.gameId) {
+              if (!verifiedMessage.payload.gameId) {
+                throw new Error(
+                  'gameId is required in payload for PlayerConnected message',
+                );
+              }
+              const gameCheckResponse = await fetch(
+                `${process.env.API_URL || 'http://localhost:30000'}/api/game/management?gameId=${verifiedMessage.payload.gameId}`,
               );
+              if (!gameCheckResponse.ok) {
+                switch (gameCheckResponse.status) {
+                  case 404:
+                    throw new Error(
+                      `Game with ID ${verifiedMessage.payload.gameId} not found`,
+                    );
+                  default:
+                    throw new Error(
+                      `Failed to verify game existence. Status: ${gameCheckResponse.status}, StatusText: ${gameCheckResponse.statusText}`,
+                    );
+                }
+              }
+              const roomInfo = (await gameCheckResponse.json()) as {
+                status: string;
+                playerInfo: Array<{ name: string; id: number }>;
+              };
+              if (
+                !roomInfo.playerInfo.some(
+                  (player) => player.id === Number(ws.data.playerId),
+                )
+              ) {
+                throw new Error(
+                  `Player with ID ${ws.data.playerId} is not in the game with ID ${verifiedMessage.payload.gameId}`,
+                );
+              }
+              ws.subscribe(`game_${verifiedMessage.payload.gameId}`);
+              ws.data.gameId = verifiedMessage.payload.gameId;
+              gameServices.createGameChannel(
+                verifiedMessage.payload.gameId,
+                (target, message) => {
+                  ws.publish(target, JSON.stringify(message));
+                },
+              );
+              break;
             }
-            ws.subscribe(`game_${verifiedMessage.payload.gameId}`);
-            ws.data.gameId = verifiedMessage.payload.gameId;
-            break;
+            // If already has gameId, fall through to default for forwarding
           }
           default: {
-            if (!verifiedMessage.payload.gameId) {
+            const gameId = verifiedMessage.payload.gameId || ws.data.gameId;
+            if (!gameId) {
               throw new Error(
-                'gameId is required in payload for player messages',
+                'gameId is required in payload or session for player messages',
               );
             }
+            if (ws.data.gameId && ws.data.gameId !== gameId) {
+              throw new Error(
+                `Mismatched gameId. Message gameId: ${gameId}, Session gameId: ${ws.data.gameId}`,
+              );
+            }
+            // Forward to game server
+            gameServiceClient.sendRoomEvent(
+              {
+                gameId: Number(gameId),
+                event: verifiedMessage.messageType as any, // Map if necessary, but assume they align for now or handle specifically
+                payload: Buffer.from(JSON.stringify(verifiedMessage.payload)),
+              },
+              (err) => {
+                if (err) {
+                  console.error(
+                    'Failed to forward message to game server:',
+                    err,
+                  );
+                }
+              },
+            );
           }
         }
       } catch (e) {
@@ -128,10 +193,6 @@ const webServer = createWebHandler({
     },
   },
 });
-
-const sendMessage = (topic: string, message: unknown) => {
-  webServer.publish(topic, JSON.stringify(message));
-};
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);

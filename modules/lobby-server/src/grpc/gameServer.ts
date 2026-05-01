@@ -2,7 +2,7 @@ import { credentials } from '@grpc/grpc-js';
 import { GAME_SERVER_HOSTNAME, GRPC_PORT } from 'utils';
 import { MahjongCodeStorageV1, MahjongRoomV1, unaryCall } from 'proto';
 import { ca } from 'zod/locales';
-import { GameEvent } from 'proto/src/generated/services/room';
+import { Event } from 'proto/src/generated/services/room';
 
 function createGameClient(address: string): MahjongRoomV1.RoomServicesClient {
   return new MahjongRoomV1.RoomServicesClient(
@@ -34,6 +34,12 @@ export const gameServices = {
   ) => {
     const call = gameServiceClient.gameChannel();
 
+    call.write({
+      gameId,
+      event: Event.CONNECTION_ESTABLISH,
+      payload: Buffer.from(new Uint8Array()),
+    });
+
     call.on('data', (response: MahjongRoomV1.ReactionMessage) => {
       const { event, payload, playerId, gameId } = response;
       let parsedPayload = undefined;
@@ -46,13 +52,14 @@ export const gameServices = {
         return;
       }
       switch (event) {
-        case GameEvent.RoundEnd:
-        case GameEvent.RoundStart:
-        case GameEvent.GameEnd:
-        case GameEvent.GameStart:
+        case Event.ROUND_END:
+        case Event.ROUND_START:
+        case Event.GAME_END:
+        case Event.GAME_START:
           publishFunction(`game_${gameId}`, { event, payload: parsedPayload });
           break;
-        case GameEvent.UNRECOGNIZED:
+        case Event.UNRECOGNIZED:
+        case Event.CONNECTION_ESTABLISH:
           break;
         default:
           publishFunction(`player_${playerId}`, {
@@ -61,5 +68,25 @@ export const gameServices = {
           });
       }
     });
+  },
+  sendRoomEvent: async ({
+    gameId,
+    event,
+    payload,
+  }: {
+    gameId: number;
+    event: Event;
+    payload: Buffer;
+  }) => {
+    try {
+      await unaryCall(gameServiceClient.sendRoomEvent.bind(gameServiceClient), {
+        gameId,
+        event,
+        payload,
+      });
+    } catch (err) {
+      console.error('Error sending room event:', err);
+      throw err;
+    }
   },
 };

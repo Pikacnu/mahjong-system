@@ -1,0 +1,133 @@
+replicaCount: 1
+imagePullSecrets: []
+
+services:
+  api-server:
+    enabled: true
+    image:
+      repository: local/mahjong-api-server
+      tag: dev
+    port: 3000
+    type: NodePort
+    nodePort: 30000
+    # Per-service environment variables (key: value)
+    env:
+      NODE_ENV: development
+      BIND_HOST: 0.0.0.0
+      PORT: "3000"
+      # You can add any service-specific settings here, e.g. feature toggles
+      FEATURE_X_ENABLED: "true"
+    # If true, a ConfigMap will be created from the above `env` and mounted via envFrom
+    envConfigMap: true
+    resources: {}
+  game-runner:
+    enabled: true
+    image:
+      repository: local/mahjong-game-server
+      tag: dev
+    port: 3000
+    grpcPort: 4001
+    resources: {}
+  lobby-server:
+    enabled: true
+    image:
+      repository: local/mahjong-lobby-server
+      tag: dev
+    port: 3001
+    type: NodePort
+    nodePort: 30001
+    env:
+      NODE_ENV: development
+      BIND_HOST: 0.0.0.0
+      PORT: "3001"
+      LOBBY_WS_PATH: "/ws"
+    envConfigMap: true
+    resources: {}
+  function-storage:
+    enabled: true
+    image:
+      repository: local/mahjong-function-storage
+      tag: dev
+    port: 4001
+    # Per-service environment variables
+    env:
+      BIND_HOST: 0.0.0.0
+      PORT: "4001"
+      # DATABASE_URL is already provided via the global postgres settings and injected by the deployment template
+    envConfigMap: true
+    resources: {}
+  function-runner:
+    enabled: true
+    image:
+      repository: local/mahjong-function-runner
+      tag: dev
+    port: 4001
+    env:
+      API_KEY: "dev-runner-key"
+      FUNCTION_STORAGE_URL: "http://mahjong-system-mahjong-system-function-storage:4001"
+      WORKER_MEMORY_LIMIT: "25165824"
+      TASK_TIMEOUT_MS: "5000"
+      VM_MAX_STACK_SIZE: "1048576"
+      VM_EXECUTION_TIMEOUT_MS: "5000"
+      MAX_WORKERS: "8"
+      MIN_WORKERS: "1"
+      MAX_TASKS_PER_WORKER: "1"
+      RELOAD_BUILTIN_INTERVAL: "300000"
+    envConfigMap: true
+    resources: {}
+postgresql:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: postgres
+    tag: "18"
+  port: 5432
+  username: mahjong
+  password: mahjongpassword
+  database: mahjongdb
+  initdbScripts:
+    init.sql: |-
+      CREATE USER code_storage_user WITH PASSWORD 'code_storage_password';
+      CREATE DATABASE "code-storage";
+      GRANT ALL PRIVILEGES ON DATABASE "code-storage" TO code_storage_user;
+
+      \c "code-storage"
+      GRANT ALL ON SCHEMA public TO code_storage_user;
+
+      CREATE USER mahjong_base_user WITH PASSWORD 'mahjong_base_password';
+      CREATE DATABASE "mahjong-base";
+      GRANT ALL PRIVILEGES ON DATABASE "mahjong-base" TO mahjong_base_user;
+
+      \c "mahjong-base"
+      GRANT ALL ON SCHEMA public TO mahjong_base_user;
+
+      CREATE USER mahjong_game_user WITH PASSWORD 'mahjong_game_password';
+      CREATE DATABASE "mahjong-game";
+      GRANT ALL PRIVILEGES ON DATABASE "mahjong-game" TO mahjong_game_user;
+
+      \c "mahjong-game"
+      GRANT ALL ON SCHEMA public TO mahjong_game_user;
+    01-create-mahjongdb.sql: |-
+      CREATE USER mahjong WITH PASSWORD 'mahjongpassword';
+      CREATE DATABASE mahjongdb;
+      GRANT ALL PRIVILEGES ON DATABASE mahjongdb TO mahjong;
+      \c "mahjongdb"
+      GRANT ALL ON SCHEMA public TO mahjong;
+  persistence:
+    enabled: true
+    size: 1Gi
+
+migrations:
+  enabled: false
+  image:
+    repository: local/mahjong-function-storage
+    tag: dev
+  command:
+    - "sh"
+    - "-c"
+    - "echo no migrations configured; exit 0"
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

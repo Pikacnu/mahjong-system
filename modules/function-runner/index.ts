@@ -35,7 +35,17 @@ const grpcServer = createFunctionRunnerGRPCHandler({
   runCodeCacher: codeCacher,
 });
 
-grpcServer.bind(`${PORT}`, ServerCredentials.createInsecure());
+grpcServer.bindAsync(
+  `0.0.0.0:${PORT}`,
+  ServerCredentials.createInsecure(),
+  (err, port) => {
+    if (err) {
+      console.error('Failed to bind gRPC server:', err);
+      return;
+    }
+    console.log(`gRPC server running at http://0.0.0.0:${port}`);
+  },
+);
 
 //const moduleManager = ModuleManager.getInstance();
 

@@ -81,6 +81,7 @@ export function createFunctionRunnerGRPCHandler({
       if (!functionInfo || !payload) {
         const errorMetadata = new Metadata();
         errorMetadata.set('error-code', ErrorCode.INVALID_ARGUMENT.toString());
+        console.error('gRPC Error: Missing functionInfo or payload in request');
         return callback(
           {
             code: Status.INVALID_ARGUMENT,
@@ -95,6 +96,10 @@ export function createFunctionRunnerGRPCHandler({
 
         const functionCode = await resolveFunctionCode(functionInfo);
         if (!functionCode) {
+          console.error(
+            'gRPC Error: Function code is empty for functionInfo:',
+            functionInfo,
+          );
           return callback(
             {
               code: Status.INTERNAL,

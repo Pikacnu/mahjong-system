@@ -4,14 +4,60 @@ import {
   ResourceType,
   StorageServiceClient,
 } from 'proto/src/generated/services/storage';
-import { NumberToResourceSource, ResourceSource } from 'utils';
+import { ResourceSource } from 'utils';
+
+async function readMethodInfo(req: Request) {
+  const url = new URL(req.url);
+  const queryName = url.searchParams.get('name');
+  const queryVersion = url.searchParams.get('version');
+
+  if (queryName) {
+    return {
+      methodInfo: {
+        name: queryName,
+        version: queryVersion ? Number(queryVersion) : 0,
+      },
+    };
+  }
+
+  try {
+    const body = (await req.json()) as {
+      methodInfo?: {
+        name?: string;
+        version?: number;
+      };
+    };
+
+    if (body?.methodInfo?.name) {
+      return {
+        methodInfo: {
+          name: body.methodInfo.name,
+          version: body.methodInfo.version ?? 0,
+        },
+      };
+    }
+  } catch {
+    // Browsers typically do not send JSON bodies with GET requests.
+  }
+
+  return null;
+}
 
 const GET = async (req: Request) => {
-  const { methodInfo } = (await req.json()) as {
-    methodInfo: {
-      name: string;
-    };
-  };
+  const requestMethodInfo = await readMethodInfo(req);
+  if (!requestMethodInfo) {
+    return Response.json(
+      {
+        message: 'Missing methodInfo',
+      },
+      {
+        status: 400,
+        statusText: 'Bad Request',
+      },
+    );
+  }
+
+  const { methodInfo } = requestMethodInfo;
   try {
     const dataReponsse = await unaryCall(
       storageServiceClient.getPluginDefinition.bind(storageServiceClient),
@@ -36,7 +82,7 @@ const GET = async (req: Request) => {
     return Response.json(
       {
         methodInfo,
-        defaultStore: dataReponsse.dependencies
+        defaultStore: dataReponsse.defaultStore
           ? JSON.parse(new TextDecoder().decode(dataReponsse.defaultStore))
           : null,
         dependencies: dataReponsse.dependencies,

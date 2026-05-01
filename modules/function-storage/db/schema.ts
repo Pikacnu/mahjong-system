@@ -12,37 +12,33 @@ import {
 } from 'drizzle-orm/pg-core';
 
 export const schema = pgSchema('function_storage');
-export const builtinType = pgEnum('builtinMethodsType', [
+export const builtinType = schema.enum('builtinMethodsType', [
   'function',
   'modules',
 ]);
 
-export const sourceType = pgEnum('sourceType', ['builtin', 'user']);
+export const sourceType = schema.enum('sourceType', ['builtin', 'user']);
 
-export const resource = pgTable(
+export const resource = schema.table(
   'resource',
   {
     id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
     code: text('code').notNull(),
-    hash: bigint('hash', {
-      mode: 'bigint',
-    })
-      .notNull()
-      .unique(),
+    hash: text('hash').notNull(),
   },
   (table) => {
     return [index('idx_resource_hash').on(table.hash)];
   },
 );
 
-export const method = pgTable('method', {
+export const method = schema.table('method', {
   id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
   name: text('name').notNull().unique(),
   sourceType: sourceType('source_type').notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-export const versions = pgTable(
+export const versions = schema.table(
   'versions',
   {
     id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
@@ -70,7 +66,7 @@ export const versions = pgTable(
   },
 );
 
-export const dependencies = pgTable(
+export const dependencies = schema.table(
   'dependencies',
   {
     id: integer('id').primaryKey().generatedAlwaysAsIdentity(),
@@ -95,7 +91,7 @@ export const dependencies = pgTable(
   },
 );
 
-export const pluginDefinitions = pgTable(
+export const pluginDefinitions = schema.table(
   'plugin_definitions',
   {
     id: integer('id').primaryKey().generatedAlwaysAsIdentity(),

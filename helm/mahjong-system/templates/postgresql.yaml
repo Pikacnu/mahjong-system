@@ -62,7 +62,7 @@ spec:
               readOnly: true
 {{- end }}
             - name: postgres-data
-              mountPath: /var/lib/postgresql/data
+              mountPath: /var/lib/postgresql
       volumes:
 {{- if .Values.postgresql.initdbScripts }}
         - name: initdb-scripts

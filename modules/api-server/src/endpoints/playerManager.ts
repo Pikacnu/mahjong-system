@@ -5,11 +5,13 @@ import { eq } from 'drizzle-orm';
 export const GET = async (request: Request) => {
   const searchParams = new URL(request.url).searchParams;
   const playerId = searchParams.get('playerId');
-  const searchPlayerData = await db
-    .select()
-    .from(player)
-    .where(eq(player.id, Number(playerId)))
-    .limit(1);
+  const searchPlayerData = (
+    await db
+      .select()
+      .from(player)
+      .where(eq(player.id, Number(playerId)))
+      .limit(1)
+  )[0];
   return Response.json(searchPlayerData, {
     status: 200,
   });

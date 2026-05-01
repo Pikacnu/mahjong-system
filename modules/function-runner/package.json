@@ -2,7 +2,6 @@
   "name": "function-runner",
   "module": "index.ts",
   "type": "module",
-  "private": true,
   "scripts": {
     "start": "bun run index.ts",
     "dev": "bun --watch run index.ts"

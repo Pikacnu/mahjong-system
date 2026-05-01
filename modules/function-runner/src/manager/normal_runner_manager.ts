@@ -13,6 +13,7 @@ import {
 } from '../utils/type';
 import { ModuleManager } from './moduleManager';
 import { unaryCall } from 'proto';
+import { encodeToBytes } from 'utils';
 
 export class TaskQueue<T> {
   private tasks: Array<T> = [];
@@ -94,7 +95,7 @@ export class WorkerManager {
     if (pending.timeoutId) clearTimeout(pending.timeoutId);
 
     if (status === WorkerMessageStatusEnum.Success) {
-      pending.resolve(payload);
+      pending.resolve(encodeToBytes(payload));
     } else {
       pending.reject(new Error(String(payload)));
     }

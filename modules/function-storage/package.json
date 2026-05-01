@@ -2,7 +2,11 @@
   "name": "function-storage",
   "module": "index.ts",
   "type": "module",
-  "private": true,
+  "scripts": {
+    "start": "bun index.ts",
+    "generate": "drizzle-kit generate",
+    "migrate": "drizzle-kit migrate"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },

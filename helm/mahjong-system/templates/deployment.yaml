@@ -27,10 +27,38 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: {{ $svc.port }}
+              name: http
+            {{- if $svc.grpcPort }}
+            - containerPort: {{ $svc.grpcPort }}
+              name: grpc
+            {{- end }}
+          {{- $pgHost := include "mahjong-system.postgresService" $root }}
           env:
             - name: DATABASE_URL
-{{- $pgHost := include "mahjong-system.postgresService" $root }}
-              value: {{ printf "postgresql://%s:%s@%s:%d/%s" $root.Values.postgresql.username $root.Values.postgresql.password $pgHost $root.Values.postgresql.port $root.Values.postgresql.database | quote }}
+              value: {{ printf "postgresql://%s:%s@%s:%v/%s" $root.Values.postgresql.username $root.Values.postgresql.password $pgHost $root.Values.postgresql.port $root.Values.postgresql.database | quote }}
+            - name: STORAGE_HOSTNAME
+              value: {{ printf "%s-function-storage" (include "mahjong-system.fullname" $root) | quote }}
+            - name: PLUGIN_RUNNER_HOSTNAME
+              value: {{ printf "%s-function-runner" (include "mahjong-system.fullname" $root) | quote }}
+            - name: GAME_SERVER_HOSTNAME
+              value: {{ printf "%s-game-runner" (include "mahjong-system.fullname" $root) | quote }}
+            - name: GRPC_PORT
+              value: {{ default "4001" $svc.grpcPort | quote }}
+            {{- if not (and $svc.env (hasKey $svc.env "PORT")) }}
+            - name: PORT
+              value: {{ $svc.port | quote }}
+            {{- end }}
+            {{- if $svc.env }}
+            {{- range $k, $v := $svc.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- end }}
+          {{- if $svc.envConfigMap }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "mahjong-system.fullname" $root }}-{{ $name }}-env
+          {{- end }}
           resources:
 {{ toYaml (default $root.Values.resources $svc.resources) | indent 12 }}
 {{- end }}

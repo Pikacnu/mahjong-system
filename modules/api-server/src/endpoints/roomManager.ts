@@ -4,42 +4,51 @@ import { eq } from 'drizzle-orm';
 
 export const GET = async (request: Request) => {
   const searchParams = new URL(request.url).searchParams;
-  const roomId = searchParams.get('roomId');
+  const roomId = searchParams.get('gameId');
+  try {
+    const searchRoomAndPlayerData = await db
+      .select({
+        status: room.status,
+        playerName: player.name,
+        playerId: player.id,
+      })
+      .from(room)
+      .where(eq(room.id, Number(roomId)))
+      .leftJoin(roomPlayerBinding, eq(roomPlayerBinding.roomId, room.id))
+      .leftJoin(player, eq(player.id, roomPlayerBinding.playerId));
 
-  const searchRoomAndPlayerData = await db
-    .select({
-      status: room.status,
-      playerName: player.name,
-    })
-    .from(room)
-    .where(eq(room.id, Number(roomId)))
-    .leftJoin(roomPlayerBinding, eq(roomPlayerBinding.roomId, room.id))
-    .leftJoin(player, eq(player.id, roomPlayerBinding.playerId))
-    .limit(1);
+    if (
+      !searchRoomAndPlayerData ||
+      searchRoomAndPlayerData.length === 0 ||
+      !searchRoomAndPlayerData[0]!.status
+    ) {
+      return new Response('Room not found', { status: 404 });
+    }
 
-  if (
-    !searchRoomAndPlayerData ||
-    searchRoomAndPlayerData.length === 0 ||
-    !searchRoomAndPlayerData[0]!.status
-  ) {
-    return new Response('Room not found', { status: 404 });
+    const searchRoomInfo = {
+      status: searchRoomAndPlayerData[0]!.status,
+      playerInfo: searchRoomAndPlayerData.map((data) => {
+        return {
+          name: data.playerName,
+          id: data.playerId,
+        };
+      }),
+    };
+
+    return new Response(JSON.stringify(searchRoomInfo), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  } catch (error) {
+    return Response.json(
+      {
+        message: 'Error fetching room information',
+      },
+      { status: 500 },
+    );
   }
-
-  const searchRoomInfo = {
-    status: searchRoomAndPlayerData[0]!.status,
-    playerInfo: searchRoomAndPlayerData.map((data) => {
-      return {
-        name: data.playerName,
-      };
-    }),
-  };
-
-  return new Response(JSON.stringify(searchRoomInfo), {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
 };
 
 export const POST = async (request: Request) => {

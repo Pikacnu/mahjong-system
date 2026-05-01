@@ -3,7 +3,6 @@ import {
   ActionHookType,
   GameEndTypeEnum,
   GameMessageEnum,
-  type GameMessagePayloads,
   type GameNextRequest,
   type GameNextResponse,
   type GameStatsPatch,
@@ -132,6 +131,13 @@ export class Round {
       payload: {
         roundIndex: this.roundIndex,
       },
+    });
+    Array.from(this.players).map(([playerId, player]) => {
+      this.sendMessageToPlayer(playerId, GameMessageEnum.ChangePlayerHand, {
+        newHand: player
+          .getHandTiles()
+          .map((tile) => tile.type * 100 + tile.index),
+      });
     });
     await this.next({ requestId: this.currentRequestId });
   }

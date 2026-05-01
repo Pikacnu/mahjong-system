@@ -7,13 +7,25 @@ kind: Service
 metadata:
   name: {{ include "mahjong-system.fullname" $root }}-{{ $name }}
 spec:
-  type: ClusterIP
+  {{- $svcType := default "ClusterIP" $svc.type }}
+  type: {{ $svcType }}
   selector:
     app.kubernetes.io/name: {{ include "mahjong-system.fullname" $root }}
     app.kubernetes.io/component: {{ $name }}
   ports:
     - name: http
       port: {{ $svc.port }}
-      targetPort: {{ $svc.port }}
+      targetPort: http
+      {{- if and (eq $svcType "NodePort") $svc.nodePort }}
+      nodePort: {{ $svc.nodePort }}
+      {{- end }}
+    {{- if $svc.grpcPort }}
+    - name: grpc
+      port: {{ $svc.grpcPort }}
+      targetPort: grpc
+      {{- if and (eq $svcType "NodePort") $svc.grpcNodePort }}
+      nodePort: {{ $svc.grpcNodePort }}
+      {{- end }}
+    {{- end }}
 {{- end }}
 {{- end }}

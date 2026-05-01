@@ -1,12 +1,19 @@
 FROM oven/bun AS builder
 WORKDIR /app
-COPY . .
-RUN bun install --frozen-lockfile
+COPY modules/function-storage /app/modules/function-storage
+COPY package.json bun.lock ./
+COPY modules/proto /app/modules/proto
+COPY modules/utils /app/modules/utils
+RUN bun install
+WORKDIR /app/modules/function-storage
+RUN bun run generate
 RUN bun build index.ts --compile --outfile function-storage
 
-FROM busybox
+FROM oven/bun
 WORKDIR /app
-COPY --from=builder /app/function-storage .
+COPY --from=builder /app/modules/function-storage/function-storage .
+# Ensure generated migrations are available at runtime
+COPY --from=builder /app/modules/function-storage/db ./db
 RUN chmod +x function-storage
-EXPOSE 3000
+EXPOSE 4001
 CMD ["./function-storage"]

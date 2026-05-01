@@ -1,0 +1,14 @@
+{{- $root := . -}}
+{{- range $name, $svc := .Values.services }}
+{{- if and $svc.enabled $svc.envConfigMap }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mahjong-system.fullname" $root }}-{{ $name }}-env
+data:
+{{- range $k, $v := $svc.env }}
+  {{ $k }}: {{ $v | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
