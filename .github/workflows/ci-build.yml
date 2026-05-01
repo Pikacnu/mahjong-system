@@ -41,6 +41,7 @@ jobs:
           context: .
           file: modules/${{ matrix.module }}/Dockerfile
           push: true
+          platforms: linux/arm64, linux/amd64
           tags: |
             ghcr.io/${{ env.REPO_OWNER }}/mahjong-${{ matrix.module }}:${{ github.sha }}
             ghcr.io/${{ env.REPO_OWNER }}/mahjong-${{ matrix.module }}:latest
