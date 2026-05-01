@@ -5,8 +5,6 @@ COPY package.json bun.lock ./
 COPY modules/proto /app/modules/proto
 COPY modules/utils /app/modules/utils
 RUN bun install
-RUN ls -la /app/modules/proto/src/proto/services
-RUN ls -la /app/modules/proto/src/proto
 RUN apt-get update && apt-get install -y protobuf-compiler
 RUN bun run gen:proto
 WORKDIR /app/modules/lobby-server
