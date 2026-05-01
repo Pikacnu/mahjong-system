@@ -5,7 +5,7 @@ COPY package.json bun.lock ./
 COPY modules/proto /app/modules/proto
 COPY modules/utils /app/modules/utils
 RUN bun install
-RUN bun run proto:generate
+RUN bun run gen:proto
 WORKDIR /app/modules/lobby-server
 #RUN if grep -q '"generate"' package.json 2>/dev/null; then bun run generate || true; fi
 RUN bun build index.ts --compile --outfile lobby-server || true

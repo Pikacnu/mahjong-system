@@ -5,7 +5,7 @@ COPY package.json bun.lock ./
 COPY modules/proto /app/modules/proto
 COPY modules/utils /app/modules/utils
 RUN bun install
-RUN bun run proto:generate
+RUN bun run gen:proto
 WORKDIR /app/modules/api-server
 RUN bun run generate
 RUN bun build index.ts --compile --outfile api-server || true
