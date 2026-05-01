@@ -5,6 +5,7 @@ COPY package.json bun.lock ./
 COPY modules/proto /app/modules/proto
 COPY modules/utils /app/modules/utils
 RUN bun install
+RUN apt-get update && apt-get install -y protobuf-compiler
 RUN bun run gen:proto
 WORKDIR /app/modules/api-server
 RUN bun run generate
