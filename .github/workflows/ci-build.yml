@@ -38,5 +38,5 @@ jobs:
           file: modules/${{ matrix.module }}/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/mahjong-${{ matrix.module }}:${{ github.sha }}
-            ghcr.io/${{ github.repository_owner }}/mahjong-${{ matrix.module }}:latest
+            ghcr.io/${{ env.REPO_OWNER }}/mahjong-${{ matrix.module }}:${{ github.sha }}
+            ghcr.io/${{ env.REPO_OWNER }}/mahjong-${{ matrix.module }}:latest
