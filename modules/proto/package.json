@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "generate": "protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto.cmd --proto_path=./src/proto --ts_proto_out=./src/generated --ts_proto_opt=esModuleInterop=true,env=node,outputServices=grpc-js,useOptionals=messages ./src/proto/services/*.proto",
+    "generate": "mkdir -p src/generated && protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto.cmd --proto_path=./src/proto --ts_proto_out=./src/generated --ts_proto_opt=esModuleInterop=true,env=node,outputServices=grpc-js,useOptionals=messages ./src/proto/services/*.proto",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
