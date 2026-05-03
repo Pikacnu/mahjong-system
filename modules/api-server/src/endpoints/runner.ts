@@ -6,22 +6,7 @@ import {
 import { storageServiceClient } from '../handler/storage';
 import { runnerServiceClient } from '../handler/runner';
 import { encodeToBytes, decodeFromBytes } from 'utils';
-
-type RunnerPayload = {
-  methodInfo?: {
-    name?: string;
-    version?: number;
-  };
-  code?: string;
-  payload?: {
-    thisValue?: unknown;
-    args?: unknown[];
-  };
-  dependencies?: Array<{
-    name: string;
-    version: number;
-  }>;
-};
+import { runnerPayloadSchema, handleValidationError } from '../utils/schemas';
 
 function decodeResult(buffer: Buffer) {
   const text = new TextDecoder().decode(buffer);
@@ -56,31 +41,39 @@ export const GET = async () => {
 };
 
 export const POST = async (request: Request) => {
-  const body = (await request.json()) as RunnerPayload;
-  const methodInfo = body.methodInfo;
+  const body = await request.json();
+  const validation = runnerPayloadSchema.safeParse(body);
 
-  if (!methodInfo?.name || Number.isNaN(Number(methodInfo.version))) {
+  if (!validation.success) {
+    return Response.json(handleValidationError(validation.error), {
+      status: 400,
+    });
+  }
+
+  const { methodInfo, code, payload, dependencies } = validation.data;
+
+  if (!methodInfo?.name) {
     return Response.json(
-      { message: 'methodInfo.name and methodInfo.version are required' },
+      { message: 'methodInfo.name is required' },
       { status: 400 },
     );
   }
 
   const normalizedMethodInfo = {
     name: methodInfo.name,
-    version: Number(methodInfo.version),
+    version: methodInfo.version ?? 0,
   };
 
-  if (body.code && body.code.trim()) {
+  if (code && code.trim()) {
     try {
       await unaryCall(
         storageServiceClient.storeResources.bind(storageServiceClient),
         {
           methodInfo: normalizedMethodInfo,
-          data: body.code,
+          data: code,
           resourceType: ResourceType.MODULE,
           sourceType: ResourceSource.USER,
-          dependencies: body.dependencies || [],
+          dependencies: dependencies || [],
         } as MahjongCodeStorageV1.StoreResourcesRequest,
       );
     } catch (e) {
@@ -98,8 +91,8 @@ export const POST = async (request: Request) => {
       {
         functionInfo: normalizedMethodInfo,
         payload: {
-          this: encodeToBytes(body.payload?.thisValue ?? null),
-          args: (body.payload?.args || []).map((arg) => encodeToBytes(arg)),
+          this: encodeToBytes(payload?.thisValue ?? null),
+          args: (payload?.args || []).map((arg) => encodeToBytes(arg)),
         },
       } as MahjongRunnerV1.FunctionRequest,
     );
@@ -119,7 +112,7 @@ export const POST = async (request: Request) => {
     return Response.json(
       {
         methodInfo: normalizedMethodInfo,
-        storedCode: Boolean(body.code?.trim()),
+        storedCode: Boolean(code?.trim()),
         result: resultData,
         rawResultBase64: resultBase64,
       },

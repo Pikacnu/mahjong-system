@@ -1,6 +1,7 @@
 import { db } from '#/db/index';
 import { player, room, roomPlayerBinding } from '#/db/schema';
 import { eq } from 'drizzle-orm';
+import { addPlayerToRoomSchema, handleValidationError } from '../utils/schemas';
 
 export const GET = async (request: Request) => {
   const searchParams = new URL(request.url).searchParams;
@@ -52,14 +53,17 @@ export const GET = async (request: Request) => {
 };
 
 export const POST = async (request: Request) => {
-  const { playerId, roomId } = (await request.json()) as {
-    playerId: number;
-    roomId: number;
-  };
+  const body = await request.json();
+  const validation = addPlayerToRoomSchema.safeParse(body);
 
-  if (!playerId || !roomId || isNaN(playerId) || isNaN(roomId)) {
-    return new Response('Player ID and Room ID are required', { status: 400 });
+  if (!validation.success) {
+    return Response.json(handleValidationError(validation.error), {
+      status: 400,
+    });
   }
+
+  const { playerId, roomId } = validation.data;
+
   try {
     await db.transaction(async (tx) => {
       const searchPlayerData = await tx

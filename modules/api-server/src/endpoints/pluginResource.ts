@@ -5,60 +5,29 @@ import {
   ResourceType,
 } from 'proto/src/generated/services/storage';
 import { validateCode } from '../utils/valid';
+import {
+  pluginResourcePostSchema,
+  pluginResourceGetSchema,
+  handleValidationError,
+} from '../utils/schemas';
 
 export const POST = async (req: Request) => {
-  const { methodInfo, resourceType, data, dependencies } =
-    (await req.json()) as {
-      methodInfo: {
-        name: string;
-        version: number;
-      };
-      data: string;
-      resourceType: ResourceType;
-      dependencies: {
-        name: string;
-        version: number;
-      }[];
-    };
+  const body = await req.json();
+  const validation = pluginResourcePostSchema.safeParse(body);
 
-  if (!methodInfo || !methodInfo.name || isNaN(Number(resourceType)) || !data) {
-    return Response.json(
-      {
-        message: 'Invalid request body',
-      },
-      {
-        status: 400,
-      },
-    );
+  if (!validation.success) {
+    return Response.json(handleValidationError(validation.error), {
+      status: 400,
+    });
   }
 
-  if (resourceType < 0 || resourceType > 1) {
-    return Response.json(
-      {
-        message: 'Invalid resource type',
-      },
-      {
-        status: 400,
-      },
-    );
-  }
+  const { methodInfo, resourceType, data, dependencies } = validation.data;
 
   const [isValid, message, parseResult] = validateCode(data);
   if (!isValid) {
     return Response.json(
       {
-        message: 'Code Valid: ' + message,
-      },
-      {
-        status: 400,
-      },
-    );
-  }
-
-  if (!dependencies || !Array.isArray(dependencies)) {
-    return Response.json(
-      {
-        message: 'Invalid dependencies format',
+        message: 'Code validation failed: ' + message,
       },
       {
         status: 400,
@@ -149,35 +118,27 @@ export const GET = async (req: Request) => {
   const name = searchParams.get('name');
   const versionStr = searchParams.get('version');
   const resourceTypeStr = searchParams.get('resourceType');
-  if (!name || !versionStr || !resourceTypeStr) {
-    return Response.json(
-      {
-        message: 'Missing query parameters',
-      },
-      {
-        status: 400,
-      },
-    );
+
+  const validation = pluginResourceGetSchema.safeParse({
+    name,
+    version: versionStr ? Number(versionStr) : undefined,
+    resourceType: resourceTypeStr ? Number(resourceTypeStr) : undefined,
+  });
+
+  if (!validation.success) {
+    return Response.json(handleValidationError(validation.error), {
+      status: 400,
+    });
   }
-  const version = Number(versionStr);
-  const resourceType = Number(resourceTypeStr);
-  if (isNaN(version) || isNaN(resourceType)) {
-    return Response.json(
-      {
-        message: 'Invalid query parameters',
-      },
-      {
-        status: 400,
-      },
-    );
-  }
+
+  const { name: validName, version, resourceType } = validation.data;
 
   try {
     const response = await unaryCall(
       storageServiceClient.getResourcesData.bind(storageServiceClient),
       {
         methodInfo: {
-          name,
+          name: validName,
           version,
         },
         resourceType,

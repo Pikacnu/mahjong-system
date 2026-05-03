@@ -1,19 +1,32 @@
 import { db } from '#/db/index';
 import { room } from '#/db/schema';
 import { eq } from 'drizzle-orm';
+import {
+  createGameSchema,
+  getGameSchema,
+  handleValidationError,
+} from '../utils/schemas';
 
 export const GET = async (request: Request) => {
   const searchParams = new URL(request.url).searchParams;
-  const gameId = searchParams.get('gameId');
+  const gameIdStr = searchParams.get('gameId');
 
-  if (!gameId || Number.isNaN(Number(gameId))) {
-    return Response.json({ message: 'gameId is required' }, { status: 400 });
+  const validation = getGameSchema.safeParse({
+    gameId: gameIdStr ? Number(gameIdStr) : undefined,
+  });
+
+  if (!validation.success) {
+    return Response.json(handleValidationError(validation.error), {
+      status: 400,
+    });
   }
+
+  const { gameId } = validation.data;
 
   const roomData = await db
     .select()
     .from(room)
-    .where(eq(room.id, Number(gameId)))
+    .where(eq(room.id, gameId))
     .limit(1);
 
   if (!roomData.length) {
@@ -32,15 +45,22 @@ export const GET = async (request: Request) => {
 };
 
 export const POST = async (request: Request) => {
-  const body = (await request.json()) as {
-    status?: 'waiting' | 'playing' | 'finished';
-  };
+  const body = await request.json();
+  const validation = createGameSchema.safeParse(body);
+
+  if (!validation.success) {
+    return Response.json(handleValidationError(validation.error), {
+      status: 400,
+    });
+  }
+
+  const { status } = validation.data;
 
   const now = Date.now();
   const createdRoom = await db
     .insert(room)
     .values({
-      status: body.status ?? 'waiting',
+      status,
       createdAt: now,
       updatedAt: now,
     })

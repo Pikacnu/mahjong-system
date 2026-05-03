@@ -1,10 +1,10 @@
 import { MahjongCodeStorageV1, unaryCall } from 'proto';
 import { storageServiceClient } from '../handler/storage';
 import {
-  ResourceType,
-  StorageServiceClient,
-} from 'proto/src/generated/services/storage';
-import { ResourceSource } from 'utils';
+  methodInfoSchema,
+  storePluginDefinitionSchema,
+  handleValidationError,
+} from '../utils/schemas';
 
 async function readMethodInfo(req: Request) {
   const url = new URL(req.url);
@@ -12,30 +12,31 @@ async function readMethodInfo(req: Request) {
   const queryVersion = url.searchParams.get('version');
 
   if (queryName) {
+    const validation = methodInfoSchema.safeParse({
+      name: queryName,
+      version: queryVersion ? Number(queryVersion) : 0,
+    });
+    if (!validation.success) {
+      return null;
+    }
     return {
-      methodInfo: {
-        name: queryName,
-        version: queryVersion ? Number(queryVersion) : 0,
-      },
+      methodInfo: validation.data,
     };
   }
 
   try {
-    const body = (await req.json()) as {
-      methodInfo?: {
-        name?: string;
-        version?: number;
-      };
-    };
-
-    if (body?.methodInfo?.name) {
-      return {
-        methodInfo: {
-          name: body.methodInfo.name,
-          version: body.methodInfo.version ?? 0,
-        },
-      };
+    const body: unknown = await req.json();
+    if (typeof body !== 'object' || body === null) {
+      return null;
     }
+    const bodyObj = body as Record<string, unknown>;
+    const validation = methodInfoSchema.safeParse(bodyObj.methodInfo);
+    if (!validation.success) {
+      return null;
+    }
+    return {
+      methodInfo: validation.data,
+    };
   } catch {
     // Browsers typically do not send JSON bodies with GET requests.
   }
@@ -116,24 +117,16 @@ async function isResourceExist(methodInfo: { name: string; version: number }) {
 }
 
 const POST = async (req: Request) => {
-  const { methodInfo, defaultStore } = (await req.json()) as {
-    methodInfo: {
-      name: string;
-      version: number;
-    };
-    defaultStore?: Record<string, unknown>;
-  };
+  const body = await req.json();
+  const validation = storePluginDefinitionSchema.safeParse(body);
 
-  if (!methodInfo || !methodInfo.name) {
-    return Response.json(
-      {
-        message: 'Invalid request body',
-      },
-      {
-        status: 400,
-      },
-    );
+  if (!validation.success) {
+    return Response.json(handleValidationError(validation.error), {
+      status: 400,
+    });
   }
+
+  const { methodInfo, defaultStore } = validation.data;
 
   try {
     const storePluginCodeRespose = await unaryCall(
