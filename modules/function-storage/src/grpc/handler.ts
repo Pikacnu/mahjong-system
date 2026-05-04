@@ -335,11 +335,23 @@ export function createGrpcServer(): Server {
         rpcSourceType === undefined ||
         resourceType === undefined
       ) {
-        return callback(null, createError(ErrorCode.INVALID_ARGUMENT, 'Missing methodInfo, data, sourceType, or resourceType in request'));
+        return callback(
+          null,
+          createError(
+            ErrorCode.INVALID_ARGUMENT,
+            'Missing methodInfo, data, sourceType, or resourceType in request',
+          ),
+        );
       }
 
       if (!dependencies || !Array.isArray(dependencies)) {
-        return callback(null, createError(ErrorCode.INVALID_ARGUMENT, 'Missing dependencies in request'));
+        return callback(
+          null,
+          createError(
+            ErrorCode.INVALID_ARGUMENT,
+            'Missing dependencies in request',
+          ),
+        );
       }
 
       await db
@@ -483,7 +495,13 @@ export function createGrpcServer(): Server {
           callback(null, { success: true, data: Empty.create() });
         })
         .catch((error) => {
-          callback(null, createError(ErrorCode.INTERNAL_ERROR, error instanceof Error ? error.message : String(error)));
+          callback(
+            null,
+            createError(
+              ErrorCode.INTERNAL_ERROR,
+              error instanceof Error ? error.message : String(error),
+            ),
+          );
         });
     },
 
@@ -491,7 +509,13 @@ export function createGrpcServer(): Server {
       const { methodInfo, defaultStore, sourceType } = call.request;
 
       if (!methodInfo) {
-        return callback(null, createError(ErrorCode.INVALID_ARGUMENT, 'Missing methodInfo in request'));
+        return callback(
+          null,
+          createError(
+            ErrorCode.INVALID_ARGUMENT,
+            'Missing methodInfo in request',
+          ),
+        );
       }
 
       const methodData = await getMethodInfo(
@@ -500,7 +524,13 @@ export function createGrpcServer(): Server {
       );
 
       if (!methodData) {
-        return callback(null, createError(ErrorCode.NOT_FOUND, `No method found with name ${methodInfo.name}`));
+        return callback(
+          null,
+          createError(
+            ErrorCode.NOT_FOUND,
+            `No method found with name ${methodInfo.name}`,
+          ),
+        );
       }
 
       const versionData = await getVersionInfoByMethod(
@@ -510,7 +540,13 @@ export function createGrpcServer(): Server {
       );
 
       if (!versionData) {
-        return callback(null, createError(ErrorCode.NOT_FOUND, `No version ${methodInfo.version} found for method ${methodInfo.name}`));
+        return callback(
+          null,
+          createError(
+            ErrorCode.NOT_FOUND,
+            `No version ${methodInfo.version} found for method ${methodInfo.name}`,
+          ),
+        );
       }
 
       const defaultStoreText =
@@ -533,7 +569,13 @@ export function createGrpcServer(): Server {
         })
         .then(() => callback(null, { success: true, data: Empty.create() }))
         .catch((error) => {
-          callback(null, createError(ErrorCode.INTERNAL_ERROR, error instanceof Error ? error.message : String(error)));
+          callback(
+            null,
+            createError(
+              ErrorCode.INTERNAL_ERROR,
+              error instanceof Error ? error.message : String(error),
+            ),
+          );
         });
     },
   } as MahjongCodeStorageV1.StorageServiceServer);

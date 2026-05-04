@@ -17,7 +17,11 @@ export function createSuccessResponse<T>(data: T): ApiResponse<T> {
   };
 }
 
-export function createErrorResponse(code: string, message: string, details?: Record<string, any>): ApiResponse<any> {
+export function createErrorResponse(
+  code: string,
+  message: string,
+  details?: Record<string, any>,
+): ApiResponse<any> {
   return {
     success: false,
     error: {

@@ -232,7 +232,9 @@ export class WorkerManager {
                   return {
                     code: resourceResponse.data.code,
                     ...dep,
-                    hash: Buffer.from(resourceResponse.data.hash).readBigInt64BE(),
+                    hash: Buffer.from(
+                      resourceResponse.data.hash,
+                    ).readBigInt64BE(),
                   };
                 }).bind(null, dep)(),
               );
