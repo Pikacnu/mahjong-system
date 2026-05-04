@@ -1,6 +1,8 @@
 syntax = "proto3";
 
 package mahjong.common.v1;
+import "google/protobuf/struct.proto";
+
 
 // ErrorCode defines common error codes for RPC responses.
 enum ErrorCode {
@@ -10,6 +12,14 @@ enum ErrorCode {
   INTERNAL_ERROR   = 3;
   ALREADY_EXISTS   = 4;
   PERMISSION_DENIED = 5;
+  INVALID_ACTION   = 7;
+}
+
+// Standard Error Envelope to be used in all Responses
+message ApiError {
+  ErrorCode code = 1;
+  string message = 2;
+  google.protobuf.Struct details = 3;  // Optional extra payload encoded via encodeToBytes
 }
 
 // ExecuteResourceType indicates the type of resource being executed, such as a function or module.
@@ -17,6 +27,3 @@ enum ExecuteResourceType {
   FUNCTION = 0;
   MODULE   = 1;
 }
-
-// Hash => bigint(need to migrate to bytes in ts code)
-// JS Number Max => int64

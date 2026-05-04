@@ -4,7 +4,7 @@ import {
   createGrpcClient,
   unaryCall,
 } from 'proto';
-import { ResourceSource, decodeFromBytes, encodeToBytes } from 'utils';
+import { ResourceSource } from 'utils';
 import type { RunnerGateway, StorageGateway } from '../classes/gateway';
 
 function toStorageResourceSource(
@@ -29,7 +29,8 @@ export function createRunnerGateway(address: string): RunnerGateway {
       const response = await unaryCall(client.createLiveModule.bind(client), {
         manifest: payload.manifest,
       });
-      return { moduleId: response.moduleId };
+      if (!response.success) throw new Error(response.error?.message);
+      return { moduleId: response.moduleId! };
     },
 
     async callLiveModuleFn(payload) {
@@ -37,11 +38,12 @@ export function createRunnerGateway(address: string): RunnerGateway {
         moduleId: payload.moduleId,
         functionName: payload.functionName,
         payload: {
-          this: encodeToBytes(payload.payload.this) as Buffer,
-          args: payload.payload.args.map((arg) => encodeToBytes(arg) as Buffer),
+          this: payload.payload.this,
+          args: payload.payload.args,
         },
       });
-      return decodeFromBytes(response.result);
+      if (!response.success) throw new Error(response.error?.message);
+      return response.data;
     },
 
     async removeLiveModule(payload) {
@@ -54,7 +56,7 @@ export function createRunnerGateway(address: string): RunnerGateway {
       await unaryCall(client.setLiveModuleValue.bind(client), {
         moduleId: payload.moduleId,
         key: payload.key,
-        value: encodeToBytes(payload.value) as Buffer,
+        value: payload.value,
       });
     },
 
@@ -63,7 +65,8 @@ export function createRunnerGateway(address: string): RunnerGateway {
         moduleId: payload.moduleId,
         key: payload.key,
       });
-      return decodeFromBytes(response.value);
+      if (!response.success) throw new Error(response.error?.message);
+      return response.data;
     },
   };
 }
@@ -84,9 +87,11 @@ export function createStorageGateway(address: string): StorageGateway {
         },
       );
 
+      if (!response.success) throw new Error(response.error?.message);
+
       return {
-        defaultStore: decodeFromBytes(response.defaultStore),
-        dependencies: response.dependencies,
+        defaultStore: response.data!.defaultStore,
+        dependencies: response.data!.dependencies,
       };
     },
   };

@@ -9,6 +9,8 @@ import {
   GameChannelInfo,
   GameEventMessage,
 } from 'proto/src/generated/services/room';
+import { ErrorCode } from 'proto/src/generated/common';
+import { Empty } from 'proto/src/generated/google/protobuf/empty';
 
 export function createGrpcServer(manager: GameInstanceManager): Server {
   const server = new Server();
@@ -16,68 +18,64 @@ export function createGrpcServer(manager: GameInstanceManager): Server {
     createRoom: async (call, callback) => {
       const { gameId } = call.request;
       if (!gameId) {
-        return callback({
-          code: Status.INVALID_ARGUMENT,
-          message: 'Room ID is required',
+        return callback(null, {
+          success: false,
+          error: {
+             code: ErrorCode.INVALID_ARGUMENT,
+             message: 'Room ID is required',
+          }
         });
       }
       manager.createGameInstance(gameId);
-      callback(null, { gameId });
+      callback(null, { success: true, gameId });
     },
     sendRoomEvent: async (call, callback) => {
       const { gameId, event, payload } = call.request;
-      if (!gameId || !event) {
-        return callback({
-          code: Status.INVALID_ARGUMENT,
-          message: 'Game ID and event are required',
+      if (!gameId || event === undefined) {
+        return callback(null, {
+          success: false,
+          error: {
+             code: ErrorCode.INVALID_ARGUMENT,
+             message: 'Game ID and event are required',
+          }
         });
       }
       let gameInstance;
       try {
         gameInstance = manager.getGameInstance(gameId);
       } catch (err) {
-        return callback({
-          code: Status.NOT_FOUND,
-          message: `Game with ID ${gameId} not found`,
-        });
-      }
-
-      let parsedPayload = undefined;
-      try {
-        parsedPayload = payload
-          ? JSON.parse(Buffer.from(payload).toString())
-          : undefined;
-      } catch (error) {
-        return callback({
-          code: Status.INVALID_ARGUMENT,
-          message: 'Invalid payload format',
+        return callback(null, {
+          success: false,
+          error: {
+             code: ErrorCode.NOT_FOUND,
+             message: `Game with ID ${gameId} not found`,
+          }
         });
       }
 
       try {
         // forward to game instance for processing
-        // gameInstance.processedReceivedRoomAction expects (event, payload)
-        (gameInstance as any).processedReceivedRoomAction(event, parsedPayload);
-        callback(null, { ok: true });
+        (gameInstance as any).processedReceivedRoomAction(event, payload);
+        callback(null, { success: true, data: Empty.create() });
       } catch (err) {
-        return callback({
-          code: Status.INTERNAL,
-          message: 'Failed to process room event',
+        return callback(null, {
+          success: false,
+          error: {
+             code: ErrorCode.INTERNAL_ERROR,
+             message: 'Failed to process room event',
+          }
         });
       }
     },
     subscribeRoomEvents: async (call) => {
       const { gameId } = call.request;
       if (!gameId) {
-        // no room specified, close stream
         call.end();
         return;
       }
-      // create a connection bound to this room so broadcasts reach this subscriber
       const connection = connectionManager.createRoomConnection(`${gameId}`);
       const connectionId = connection.getConnectionId();
 
-      // when connection emits messages, forward to stream
       const messageHandler = (msg: MahjongRoomV1.GameEventMessage) => {
         try {
           const roomInfo = GameEventMessage.fromJSON(msg as any);
@@ -95,16 +93,13 @@ export function createGrpcServer(manager: GameInstanceManager): Server {
       });
     },
     gameChannel: async (call) => {
-      // Bidirectional streaming: bind a Connection to this call and route messages.
       const connection = connectionManager.createConnection();
       const connectionId = connection.getConnectionId();
       let isBoundToGame = false;
 
-      // forward outgoing messages from connection to client stream
       const outgoing = (msg: MahjongRoomV1.ReactionMessage) => {
         try {
           const reactionInfo = ReactionMessage.fromJSON(msg);
-
           call.write(reactionInfo);
         } catch (e) {
           console.error('Failed to send message to client:', e);
@@ -114,23 +109,11 @@ export function createGrpcServer(manager: GameInstanceManager): Server {
 
       let boundGameId: number | null = null;
       call.on('data', (request: MahjongRoomV1.ReactionMessage) => {
-        // Expecting request to contain: { gameId, event, payload, playerId }
         const { gameId, payload, playerId } = request;
-        let parsedPayload = payload;
-        try {
-          if (payload && Buffer.isBuffer(payload)) {
-            parsedPayload = JSON.parse(Buffer.from(payload).toString());
-          }
-        } catch (e) {
-          console.error('Failed to parse incoming payload:', e);
-          return;
-        }
 
         if (!isBoundToGame) {
           if (!gameId) {
-            console.error(
-              'First message must contain gameId to bind connection',
-            );
+            console.error('First message must contain gameId to bind connection');
             return;
           }
           boundGameId = gameId;
@@ -138,37 +121,24 @@ export function createGrpcServer(manager: GameInstanceManager): Server {
           isBoundToGame = true;
         }
 
-        if (!gameId || !request.event) {
-          // missing routing info
-          return;
-        }
-        // bind this connection to the room on first received message
+        if (!gameId || request.event === undefined) return;
         if (!boundGameId) {
           boundGameId = gameId;
           connectionManager.addConnectionToRoom(`${gameId}`, connectionId);
         }
-        if (!playerId) {
-          // missing player ID
-          return;
-        }
+        if (!playerId) return;
+
         try {
           const gameInstance = manager.getGameInstance(gameId);
-          gameInstance.processedReceivedRoomAction(
-            request.event,
-            parsedPayload,
-          );
+          gameInstance.processedReceivedRoomAction(request.event, payload);
         } catch (e) {
-          // could not find game instance or processing failed
         }
       });
 
       call.on('end', () => {
         connection.getEventEmitter().off('message', outgoing);
         if (boundGameId)
-          connectionManager.unregisterRoomConnection(
-            `${boundGameId}`,
-            connectionId,
-          );
+          connectionManager.unregisterRoomConnection(`${boundGameId}`, connectionId);
         connectionManager.removeConnection(connectionId);
         call.end();
       });

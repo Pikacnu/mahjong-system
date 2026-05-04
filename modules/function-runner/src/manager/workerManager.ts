@@ -218,20 +218,21 @@ export class WorkerManager {
             for (const dep of dependenciesThatNeedToBeFetched) {
               fetchingPromise.push(
                 (async (dep: ModuleDependency): Promise<ModuleData> => {
-                  const resourceData = await unaryCall(
+                  const resourceResponse = await unaryCall(
                     storageServiceClient.getResourcesData.bind(
                       storageServiceClient,
                     ),
                     {
-                      resources: {
-                        methodInfo: dep,
-                      },
+                      methodInfo: dep,
                     } as GetResourceDataRequest,
                   );
+                  if (!resourceResponse.success || !resourceResponse.data) {
+                    throw new Error('Failed to fetch resource');
+                  }
                   return {
-                    ...resourceData,
+                    code: resourceResponse.data.code,
                     ...dep,
-                    hash: Buffer.from(resourceData.hash).readBigInt64BE(),
+                    hash: Buffer.from(resourceResponse.data.hash).readBigInt64BE(),
                   };
                 }).bind(null, dep)(),
               );

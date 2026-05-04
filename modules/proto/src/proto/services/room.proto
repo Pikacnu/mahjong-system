@@ -1,7 +1,9 @@
 syntax = "proto3";
 
 package mahjong.game_server.v1;
+import "common.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
 
 enum RoomStatus {
   WAITING = 0;
@@ -10,7 +12,6 @@ enum RoomStatus {
 }
 
 enum Event {
-  // 0 ~ 99: Game / Round Lifecycle
   GAME_START = 0;
   GAME_END = 1;
   ROUND_START = 2;
@@ -18,7 +19,6 @@ enum Event {
   ROUND_STATUS_CHANGED = 4;
   CHANGE_PLAYER_HAND = 5;
 
-  // 100 ~ 199: Player Actions
   PLAYER_DRAWS_TILE = 100;
   PLAYER_DISCARDS_TILE = 101;
   PLAYER_CHI = 102;
@@ -28,17 +28,14 @@ enum Event {
   PLAYER_TSUMO = 106;
   PLAYER_RIICHI = 107;
 
-  // 200 ~ 299: Game Events / System Events
   PLAYER_GETS_TILE = 200;
 
-  // 300 ~ 399: UI / Presentation
   SHOW_ACTIONS = 300;
   SHOW_AVAILABLE_ACTIONS = 301;
   SHOW_HINT = 302;
   SHOW_ERROR = 303;
   SHOW_INFO = 304;
 
-  // 400 ~ 499: Connection / Session
   PLAYER_CONNECTED = 400;
   PLAYER_DISCONNECTED = 401;
   PLAYER_JOINED = 402;
@@ -46,21 +43,30 @@ enum Event {
   CONNECTION_ESTABLISH = 404;
 }
 
-// CreateGameRequest contains the information needed to create a new game room, including the room name and an optional room ID.
 message CreateGameRequest {
   int32 game_id = 2;
 }
 
-// CreateGameResponse contains the result of creating a game room, including the room ID.
 message CreateGameResponse {
-  int32 game_id = 1;
+  bool success = 1;
+  oneof result {
+    int32 game_id = 2;
+    mahjong.common.v1.ApiError error = 3;
+  }
 }
 
-// SendGameEventRequest contains the information needed to send a game event, including the game ID and the event type.
 message SendGameEventRequest {
   int32 game_id = 1;
   Event event = 2;
-  bytes payload = 3;
+  google.protobuf.Struct payload = 3;
+}
+
+message SendGameEventResponse {
+  bool success = 1;
+  oneof result {
+    google.protobuf.Empty data = 2;
+    mahjong.common.v1.ApiError error = 3;
+  }
 }
 
 message GameChannelInfo {
@@ -69,23 +75,19 @@ message GameChannelInfo {
 
 message GameEventMessage {
   Event event = 1;
-  optional bytes payload = 2;
+  optional google.protobuf.Struct payload = 2;
 }
 
 message ReactionMessage {
   Event event = 1;
   optional int32 player_id = 2;
   int32 game_id = 3;
-  bytes payload = 4;
+  optional google.protobuf.Struct payload = 4;
 }
 
 service RoomServices {
-  // CreateRoom creates a new game room with the specified name and returns the room ID.
   rpc CreateRoom (CreateGameRequest) returns (CreateGameResponse);
-  // SendRoomEvent sends a room event (e.g., player joined, game started) to all clients in the specified room.
-  rpc SendRoomEvent (SendGameEventRequest) returns (google.protobuf.Empty);
-  // SubscribeRoomEvents allows clients to subscribe to events in a specific room.
+  rpc SendRoomEvent (SendGameEventRequest) returns (SendGameEventResponse);
   rpc SubscribeRoomEvents (GameChannelInfo) returns (stream GameEventMessage);
-  // GameChannel allows clients to send and receive game-specific messages in a particular room.
   rpc GameChannel (stream ReactionMessage) returns (stream ReactionMessage);
 }

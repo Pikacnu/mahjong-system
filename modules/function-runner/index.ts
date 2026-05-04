@@ -1,5 +1,5 @@
 import { PORT } from 'utils';
-import { WorkerManager } from './src/manager/normal_runner_manager';
+import { WorkerManager } from './src/manager/workerManager';
 // import type { VMOptions } from './src/utils/type';
 import {
   MAX_TASKS_PER_WORKER,

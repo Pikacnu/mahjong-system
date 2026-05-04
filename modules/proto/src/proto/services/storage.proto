@@ -4,8 +4,8 @@ package mahjong.code_storage.v1;
 
 import "common.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
 
-// MethodInfo represents the metadata for a piece of code, including its name and version.
 message MethodInfo {
   string name = 1;
   int32 version = 2;
@@ -27,54 +27,76 @@ enum ResourceSource {
   USER    = 1;
 }
 
-// GetCodeInfoRequest retrieves the code for a given function name and version.
 message GetMethodInfoRequest {
   MethodInfo method_info = 1;
   optional ResourceSource resource_source = 2;
 }
 
 message GetMethodInfoResponse {
+  bool success = 1;
+  oneof result {
+    MethodInfoList data = 2;
+    mahjong.common.v1.ApiError error = 3;
+  }
+}
+
+message MethodInfoList {
   repeated MethodInfo dependencies = 1;
 }
 
-// GetPluginDefinitionRequest retrieves plugin runtime definition by method info.
 message GetPluginDefinitionRequest {
   MethodInfo method_info = 1;
   optional ResourceSource resource_source = 2;
 }
 
-// GetPluginDefinitionResponse returns runtime-related plugin definition.
 message GetPluginDefinitionResponse {
-  bytes default_store = 1;
+  bool success = 1;
+  oneof result {
+    PluginDefinition data = 2;
+    mahjong.common.v1.ApiError error = 3;
+  }
+}
+
+message PluginDefinition {
+  google.protobuf.Struct default_store = 1;
   repeated MethodInfo dependencies = 2;
 }
 
-// GetCodeVersionRequest retrieves all available versions for a given function name.
 message GetCodeVersionRequest {
   string function_name = 1;
   ResourceType resource_type = 2;
   optional ResourceSource resource_source = 3;
 }
 
-// GetCodeVersionResponse returns all available versions for a given function name, 
-// or an error code if not found.
 message GetCodeVersionResponse {
+  bool success = 1;
+  oneof result {
+    CodeVersionList data = 2;
+    mahjong.common.v1.ApiError error = 3;
+  }
+}
+
+message CodeVersionList {
   repeated int32 versions = 1;
 }
 
-// GetResourceDataRequest retrieves the code for a given function name and version.
 message GetResourceDataRequest {
   MethodInfo method_info = 1;
 }
 
-// GetResourceDataResponse returns the code string for the requested function and version, 
-// or an error code if not found.
 message GetResourceDataResponse {
+  bool success = 1;
+  oneof result {
+    ResourceData data = 2;
+    mahjong.common.v1.ApiError error = 3;
+  }
+}
+
+message ResourceData {
   string code = 1;
   bytes hash = 2;
 }
 
-// StoreResourcesRequest stores the code for a given function name and version.
 message StoreResourcesRequest {
   MethodInfo method_info = 1;
   string data = 2;
@@ -83,31 +105,34 @@ message StoreResourcesRequest {
   repeated MethodInfo dependencies = 5;
 }
 
-// StorePluginDefinitionRequest stores plugin runtime definition.
+message StoreResourcesResponse {
+  bool success = 1;
+  oneof result {
+    google.protobuf.Empty data = 2;
+    mahjong.common.v1.ApiError error = 3;
+  }
+}
+
 message StorePluginDefinitionRequest {
   MethodInfo method_info = 1;
-  optional bytes default_store = 2;
+  optional google.protobuf.Struct default_store = 2;
   ResourceSource source_type = 3;
 }
 
-// StoreResourcesResponse returns an error code indicating the success or failure of 
-// the store operation.
+message StorePluginDefinitionResponse {
+  bool success = 1;
+  oneof result {
+    google.protobuf.Empty data = 2;
+    mahjong.common.v1.ApiError error = 3;
+  }
+}
 
-// StorageService provides RPC endpoints for storing and retrieving Mahjong
-// function code and resources (builtin modules, etc.).
+
 service StorageService {
-  // GetMethodInfo retrieves the metadata for a given function name and version.
-  // To get method's dependencies
   rpc GetMethodInfo(GetMethodInfoRequest) returns (GetMethodInfoResponse);
-  // GetPluginDefinition retrieves stateful/default store definition for a plugin.
   rpc GetPluginDefinition(GetPluginDefinitionRequest) returns (GetPluginDefinitionResponse);
-  // GetResourcesVersions retrieves all available versions for a given function name.
   rpc GetResourcesVersions(GetCodeVersionRequest) returns (GetCodeVersionResponse);
-  // GetResourcesData retrieves the code for a given function name and version.
   rpc GetResourcesData(GetResourceDataRequest) returns (GetResourceDataResponse);
-  // StoreResources stores the code for a given function name and version.
-  // Note: This method can be used for both creating new code and updating existing code.
-  rpc StoreResources(StoreResourcesRequest) returns (google.protobuf.Empty);
-  // StorePluginDefinition stores plugin runtime definition for a method version.
-  rpc StorePluginDefinition(StorePluginDefinitionRequest) returns (google.protobuf.Empty);
+  rpc StoreResources(StoreResourcesRequest) returns (StoreResourcesResponse);
+  rpc StorePluginDefinition(StorePluginDefinitionRequest) returns (StorePluginDefinitionResponse);
 }

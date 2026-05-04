@@ -18,11 +18,20 @@ export const gameServiceClient = createGameClient(GAME_SERVICE_ADDRESS);
 export const gameServices = {
   createRoom: async (gameId: number): Promise<number> => {
     try {
-      const createGameRespons = await unaryCall(
+      const createGameResponse = await unaryCall(
         gameServiceClient.createRoom.bind(gameServiceClient),
         { gameId },
       );
-      return createGameRespons.gameId;
+      if (
+        !createGameResponse.success ||
+        createGameResponse.gameId === undefined ||
+        createGameResponse.gameId === null
+      ) {
+        throw new Error(
+          'Failed to create game room: Invalid response from server',
+        );
+      }
+      return createGameResponse.gameId;
     } catch (err) {
       console.error('Error creating game room:', err);
       throw err;
@@ -43,20 +52,13 @@ export const gameServices = {
     call.on('data', (response: MahjongRoomV1.ReactionMessage) => {
       const { event, payload, playerId, gameId } = response;
       let parsedPayload = undefined;
-      try {
-        parsedPayload = payload
-          ? JSON.parse(Buffer.from(payload).toString())
-          : undefined;
-      } catch (error) {
-        console.error('Error parsing payload from game channel:', error);
-        return;
-      }
+
       switch (event) {
         case Event.ROUND_END:
         case Event.ROUND_START:
         case Event.GAME_END:
         case Event.GAME_START:
-          publishFunction(`game_${gameId}`, { event, payload: parsedPayload });
+          publishFunction(`game_${gameId}`, { event, payload });
           break;
         case Event.UNRECOGNIZED:
         case Event.CONNECTION_ESTABLISH:
@@ -64,7 +66,7 @@ export const gameServices = {
         default:
           publishFunction(`player_${playerId}`, {
             event,
-            payload: parsedPayload,
+            payload,
           });
       }
     });

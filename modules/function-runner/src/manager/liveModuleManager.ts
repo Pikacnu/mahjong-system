@@ -338,19 +338,21 @@ export class LiveModuleManager {
 
     const fetchedModules = await Promise.all(
       missingModulesToFetch.map(async (dep) => {
-        const resourceData = (await unaryCall(
+        const resourceResponse = (await unaryCall(
           storageServiceClient.getResourcesData.bind(storageServiceClient),
           {
-            resources: {
-              methodInfo: dep,
-            },
+            methodInfo: dep,
           } as GetResourceDataRequest,
         )) as GetResourceDataResponse;
 
+        if (!resourceResponse.success || !resourceResponse.data) {
+          throw new Error('Failed to fetch module data');
+        }
+
         return {
-          ...resourceData,
+          code: resourceResponse.data.code,
           ...dep,
-          hash: Buffer.from(resourceData.hash).readBigInt64BE(),
+          hash: Buffer.from(resourceResponse.data.hash).readBigInt64BE(),
         } satisfies ModuleData;
       }),
     );

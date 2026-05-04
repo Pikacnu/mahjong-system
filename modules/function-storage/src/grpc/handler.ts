@@ -1,8 +1,6 @@
-import { Metadata, Server } from '@grpc/grpc-js';
-import { Status } from '@grpc/grpc-js/build/src/constants';
+import { Server } from '@grpc/grpc-js';
 import { MahjongCodeStorageV1, MahjongCommonV1 } from 'proto';
 import { ErrorCode } from 'proto/src/generated/common';
-import { decodeFromBytes, encodeToBytes } from 'utils';
 import { db } from '../utils/db';
 import {
   method,
@@ -13,7 +11,8 @@ import {
   pluginDefinitions,
 } from '../../db/schema';
 import { and, desc, eq } from 'drizzle-orm';
-import { dependencies } from './../../db/schema';
+import { dependencies as depsSchema } from './../../db/schema';
+import { Empty } from 'proto/src/generated/google/protobuf/empty';
 
 async function getMethodInfo(
   name: string,
@@ -41,6 +40,7 @@ async function getVersionInfoByMethod(
       id: versions.id,
       methodId: versions.methodId,
       version: versions.version,
+      resourceId: versions.resourceId,
     })
     .from(versions)
     .where(
@@ -55,9 +55,9 @@ async function getVersionInfoByMethod(
 async function getDependenciesByVersionId(versionId: number) {
   return await db
     .select({ name: method.name, version: versions.version })
-    .from(dependencies)
-    .where(eq(dependencies.sourceVersionId, versionId))
-    .leftJoin(versions, eq(versions.id, dependencies.dependencyVersionId))
+    .from(depsSchema)
+    .where(eq(depsSchema.sourceVersionId, versionId))
+    .leftJoin(versions, eq(versions.id, depsSchema.dependencyVersionId))
     .leftJoin(method, eq(method.id, versions.methodId))
     .then(
       (rows) =>
@@ -73,7 +73,7 @@ const ResourceTypeRPCMap: {
 } = {
   [MahjongCodeStorageV1.ResourceType.FUNCTION]: 'function',
   [MahjongCodeStorageV1.ResourceType.MODULE]: 'modules',
-  [MahjongCodeStorageV1.ResourceType.UNRECOGNIZED]: 'function', // default to function for unknown type
+  [MahjongCodeStorageV1.ResourceType.UNRECOGNIZED]: 'function',
 };
 
 const SourceTypeRPCMap: {
@@ -84,26 +84,38 @@ const SourceTypeRPCMap: {
   [MahjongCodeStorageV1.ResourceSource.UNRECOGNIZED]: 'user',
 };
 
+function createError(code: ErrorCode, message: string) {
+  return { success: false, error: { code, message } };
+}
+
 export function createGrpcServer(): Server {
   const server = new Server();
   server.addService(MahjongCodeStorageV1.StorageServiceService, {
     getMethodInfo: async (call, callback) => {
       const { methodInfo, resourceSource } = call.request;
       if (!methodInfo) {
-        return callback({
-          code: Status.INVALID_ARGUMENT,
-          details: 'Missing method in request',
-        });
+        return callback(
+          null,
+          createError(
+            ErrorCode.INVALID_ARGUMENT,
+            'Missing methodInfo in request',
+          ),
+        );
       }
       const methodData = await getMethodInfo(
         methodInfo.name,
-        resourceSource ? SourceTypeRPCMap[resourceSource] : undefined,
+        resourceSource !== undefined
+          ? SourceTypeRPCMap[resourceSource]
+          : undefined,
       );
       if (!methodData) {
-        return callback({
-          code: Status.NOT_FOUND,
-          details: `No method found with name ${methodInfo.name}`,
-        });
+        return callback(
+          null,
+          createError(
+            ErrorCode.NOT_FOUND,
+            `No method found with name ${methodInfo.name}`,
+          ),
+        );
       }
       const { versionId, methodId } =
         (await db
@@ -118,48 +130,66 @@ export function createGrpcServer(): Server {
           .limit(1)
           .then((res) => res[0])) || {};
       if (!versionId || !methodId) {
-        return callback({
-          code: Status.NOT_FOUND,
-          details: `No version ${methodInfo.version} found for method ${methodInfo.name}`,
-        });
+        return callback(
+          null,
+          createError(
+            ErrorCode.NOT_FOUND,
+            `No version ${methodInfo.version} found for method ${methodInfo.name}`,
+          ),
+        );
       }
       const dependenciesData = await getDependenciesByVersionId(versionId);
       callback(null, {
-        dependencies: dependenciesData,
+        success: true,
+        data: { dependencies: dependenciesData },
       });
     },
+
     getPluginDefinition: async (call, callback) => {
       const { methodInfo, resourceSource } = call.request;
       if (!methodInfo) {
-        return callback({
-          code: Status.INVALID_ARGUMENT,
-          details: 'Missing methodInfo in request',
-        });
+        return callback(
+          null,
+          createError(
+            ErrorCode.INVALID_ARGUMENT,
+            'Missing methodInfo in request',
+          ),
+        );
       }
 
       const methodData = await getMethodInfo(
         methodInfo.name,
-        resourceSource ? SourceTypeRPCMap[resourceSource] : undefined,
+        resourceSource !== undefined
+          ? SourceTypeRPCMap[resourceSource]
+          : undefined,
       );
 
       if (!methodData) {
-        return callback({
-          code: Status.NOT_FOUND,
-          details: `No method found with name ${methodInfo.name}`,
-        });
+        return callback(
+          null,
+          createError(
+            ErrorCode.NOT_FOUND,
+            `No method found with name ${methodInfo.name}`,
+          ),
+        );
       }
 
       const versionData = await getVersionInfoByMethod(
         methodData.id,
         methodInfo.version,
-        resourceSource ? SourceTypeRPCMap[resourceSource] : undefined,
+        resourceSource !== undefined
+          ? SourceTypeRPCMap[resourceSource]
+          : undefined,
       );
 
       if (!versionData) {
-        return callback({
-          code: Status.NOT_FOUND,
-          details: `No version ${methodInfo.version} found for method ${methodInfo.name}`,
-        });
+        return callback(
+          null,
+          createError(
+            ErrorCode.NOT_FOUND,
+            `No version ${methodInfo.version} found for method ${methodInfo.name}`,
+          ),
+        );
       }
 
       const definition = await db
@@ -172,26 +202,36 @@ export function createGrpcServer(): Server {
         .then((res) => res[0]);
 
       if (!definition) {
-        return callback({
-          code: Status.NOT_FOUND,
-          details: `No plugin definition found for ${methodInfo.name}@${methodInfo.version}`,
-        });
+        return callback(
+          null,
+          createError(
+            ErrorCode.NOT_FOUND,
+            `No plugin definition found for ${methodInfo.name}@${methodInfo.version}`,
+          ),
+        );
       }
 
       const dependenciesData = await getDependenciesByVersionId(versionData.id);
 
       callback(null, {
-        defaultStore: encodeToBytes(definition.defaultStore) as Buffer,
-        dependencies: dependenciesData,
+        success: true,
+        data: {
+          defaultStore: JSON.parse(definition.defaultStore),
+          dependencies: dependenciesData,
+        },
       });
     },
+
     getResourcesVersions: async (call, callback) => {
       const { functionName, resourceType, resourceSource } = call.request;
       if (!functionName) {
-        return callback({
-          code: Status.INVALID_ARGUMENT,
-          details: 'Missing functionName in request',
-        });
+        return callback(
+          null,
+          createError(
+            ErrorCode.INVALID_ARGUMENT,
+            'Missing functionName in request',
+          ),
+        );
       }
       const methodInfo = await getMethodInfo(
         functionName,
@@ -200,114 +240,106 @@ export function createGrpcServer(): Server {
           : undefined,
       );
       if (!methodInfo) {
-        return callback({
-          code: Status.NOT_FOUND,
-          details: `No method found with name ${functionName}`,
-        });
-      }
-      const filters = [eq(versions.methodId, methodInfo.id)];
-      if (resourceType !== undefined) {
-        filters.push(
-          eq(versions.resourceType, ResourceTypeRPCMap[resourceType]),
+        return callback(
+          null,
+          createError(
+            ErrorCode.NOT_FOUND,
+            `No method found with name ${functionName}`,
+          ),
         );
       }
-      const versionData = await db
-        .select({
-          version: versions.version,
-        })
+      const versionsData = await db
+        .select({ version: versions.version })
         .from(versions)
-        .where(and(...filters));
+        .where(eq(versions.methodId, methodInfo.id))
+        .orderBy(desc(versions.version));
 
-      if (!versionData || versionData.length === 0) {
-        return callback({
-          code: Status.NOT_FOUND,
-          details: `No versions found for method ${functionName}`,
-        });
-      }
       callback(null, {
-        versions: versionData.map((v) => v.version),
+        success: true,
+        data: {
+          versions: versionsData.map((v) => v.version),
+        },
       });
     },
+
     getResourcesData: async (call, callback) => {
       const { methodInfo } = call.request;
       if (!methodInfo) {
-        return callback({
-          code: Status.INVALID_ARGUMENT,
-          details: 'Missing method in request',
-        });
+        return callback(
+          null,
+          createError(
+            ErrorCode.INVALID_ARGUMENT,
+            'Missing methodInfo in request',
+          ),
+        );
       }
       const methodData = await getMethodInfo(methodInfo.name);
       if (!methodData) {
-        return callback({
-          code: Status.NOT_FOUND,
-          details: `No method found with name ${methodInfo.name}`,
-        });
-      }
-      const codeData = await db
-        .select({
-          code: resource.code,
-          hash: resource.hash,
-        })
-        .from(versions)
-        .where(
-          and(
-            eq(versions.methodId, methodData.id),
-            eq(versions.version, methodInfo.version),
+        return callback(
+          null,
+          createError(
+            ErrorCode.NOT_FOUND,
+            `No method found with name ${methodInfo.name}`,
           ),
-        )
-        .leftJoin(resource, eq(versions.resourceId, resource.id))
+        );
+      }
+      const versionData = await getVersionInfoByMethod(
+        methodData.id,
+        methodInfo.version,
+      );
+      if (!versionData) {
+        return callback(
+          null,
+          createError(
+            ErrorCode.NOT_FOUND,
+            `No version ${methodInfo.version} found for method ${methodInfo.name}`,
+          ),
+        );
+      }
+
+      const resourceData = await db
+        .select({ code: resource.code, hash: resource.hash })
+        .from(resource)
+        .where(eq(resource.id, versionData.resourceId))
         .limit(1)
         .then((res) => res[0]);
-      if (!codeData || !codeData.code || codeData.hash == null) {
-        return callback({
-          code: Status.NOT_FOUND,
-          details: `No code found for method ${methodInfo.name} version ${methodInfo.version}`,
-        });
+
+      if (!resourceData) {
+        return callback(
+          null,
+          createError(ErrorCode.NOT_FOUND, `No resource data found`),
+        );
       }
-      // ensure bigint -> 8-byte buffer, DB may return bigint or string
-      let hashBuffer: Buffer;
-      try {
-        const hashBigInt =
-          typeof codeData.hash === 'bigint'
-            ? codeData.hash
-            : BigInt(codeData.hash);
-        hashBuffer = Buffer.alloc(8);
-        hashBuffer.writeBigInt64BE(hashBigInt);
-      } catch (e) {
-        hashBuffer = Buffer.from(String(codeData.hash));
-      }
+
       callback(null, {
-        code: codeData.code,
-        hash: hashBuffer,
+        success: true,
+        data: {
+          code: resourceData.code,
+          hash: Buffer.from(resourceData.hash, 'hex'),
+        },
       });
     },
+
     storeResources: async (call, callback) => {
       const {
         methodInfo,
         data,
-        sourceType,
         resourceType,
-        dependencies: deps,
+        sourceType: rpcSourceType,
+        dependencies,
       } = call.request;
 
       if (
         methodInfo === undefined ||
         data === undefined ||
-        sourceType === undefined ||
+        rpcSourceType === undefined ||
         resourceType === undefined
       ) {
-        return callback({
-          code: Status.INVALID_ARGUMENT,
-          details:
-            'Missing methodInfo, data, sourceType, or resourceType in request',
-        });
+        return callback(null, createError(ErrorCode.INVALID_ARGUMENT, 'Missing methodInfo, data, sourceType, or resourceType in request'));
       }
 
-      if (!deps || !Array.isArray(deps)) {
-        return callback({
-          code: Status.INVALID_ARGUMENT,
-          details: 'Missing dependencies in request',
-        });
+      if (!dependencies || !Array.isArray(dependencies)) {
+        return callback(null, createError(ErrorCode.INVALID_ARGUMENT, 'Missing dependencies in request'));
       }
 
       await db
@@ -323,7 +355,7 @@ export function createGrpcServer(): Server {
               .insert(method)
               .values({
                 name: methodInfo.name,
-                sourceType: SourceTypeRPCMap[sourceType],
+                sourceType: SourceTypeRPCMap[rpcSourceType],
               })
               .onConflictDoNothing()
               .returning()
@@ -392,7 +424,7 @@ export function createGrpcServer(): Server {
           }
 
           // for each dependency, resolve a concrete versions.id and insert hard-pin
-          for (const dep of deps) {
+          for (const dep of dependencies) {
             if (!dep || !dep.name) throw new Error('Invalid dependency entry');
 
             const depMethod = await tx
@@ -440,7 +472,7 @@ export function createGrpcServer(): Server {
             }
 
             await tx
-              .insert(dependencies)
+              .insert(depsSchema)
               .values({
                 sourceVersionId: insertedVersion.id,
                 dependencyVersionId: dependencyVersionRow.id,
@@ -448,26 +480,18 @@ export function createGrpcServer(): Server {
               .onConflictDoNothing();
           }
 
-          callback(null, {});
+          callback(null, { success: true, data: Empty.create() });
         })
         .catch((error) => {
-          callback(
-            {
-              code: Status.INTERNAL,
-              details: error instanceof Error ? error.message : String(error),
-            },
-            null,
-          );
+          callback(null, createError(ErrorCode.INTERNAL_ERROR, error instanceof Error ? error.message : String(error)));
         });
     },
+
     storePluginDefinition: async (call, callback) => {
       const { methodInfo, defaultStore, sourceType } = call.request;
 
       if (!methodInfo) {
-        return callback({
-          code: Status.INVALID_ARGUMENT,
-          details: 'Missing methodInfo in request',
-        });
+        return callback(null, createError(ErrorCode.INVALID_ARGUMENT, 'Missing methodInfo in request'));
       }
 
       const methodData = await getMethodInfo(
@@ -476,10 +500,7 @@ export function createGrpcServer(): Server {
       );
 
       if (!methodData) {
-        return callback({
-          code: Status.NOT_FOUND,
-          details: `No method found with name ${methodInfo.name}`,
-        });
+        return callback(null, createError(ErrorCode.NOT_FOUND, `No method found with name ${methodInfo.name}`));
       }
 
       const versionData = await getVersionInfoByMethod(
@@ -489,17 +510,13 @@ export function createGrpcServer(): Server {
       );
 
       if (!versionData) {
-        return callback({
-          code: Status.NOT_FOUND,
-          details: `No version ${methodInfo.version} found for method ${methodInfo.name}`,
-        });
+        return callback(null, createError(ErrorCode.NOT_FOUND, `No version ${methodInfo.version} found for method ${methodInfo.name}`));
       }
 
-      const normalizedDefaultStore = decodeFromBytes(defaultStore);
       const defaultStoreText =
-        typeof normalizedDefaultStore === 'string'
-          ? normalizedDefaultStore
-          : JSON.stringify(normalizedDefaultStore ?? {});
+        typeof defaultStore === 'string'
+          ? defaultStore
+          : JSON.stringify(defaultStore ?? {});
 
       await db
         .insert(pluginDefinitions)
@@ -514,17 +531,12 @@ export function createGrpcServer(): Server {
             updatedAt: new Date(),
           },
         })
-        .then(() => callback(null, {}))
+        .then(() => callback(null, { success: true, data: Empty.create() }))
         .catch((error) => {
-          callback(
-            {
-              code: Status.INTERNAL,
-              details: error instanceof Error ? error.message : String(error),
-            },
-            null,
-          );
+          callback(null, createError(ErrorCode.INTERNAL_ERROR, error instanceof Error ? error.message : String(error)));
         });
     },
   } as MahjongCodeStorageV1.StorageServiceServer);
+
   return server;
 }

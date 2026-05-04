@@ -28,20 +28,15 @@ export async function callLiveModuleFunction(
   const resultArg = (await unaryCall(client.callLiveModuleFn, {
     moduleId: functionInfo.moduleId,
     payload: {
-      this: encodeToBytes(payload.this),
-      args: encodeToBytes(payload.args),
+      this: payload.this,
+      args: payload.args,
     },
     functionName: functionInfo.functionName,
-  } as MahjongRunnerV1.LiveModuleRunRequest)) as FunctionResponse;
-  const resultData = (
-    Buffer.isBuffer(resultArg.result)
-      ? resultArg
-      : Buffer.from(resultArg.result)
-  ) as Buffer;
-  const resultObj = resultData.toString('utf-8');
-  try {
-    return JSON.parse(resultObj);
-  } catch {
-    return resultObj;
+  })) as FunctionResponse;
+
+  if (!resultArg.success) {
+    throw new Error(resultArg.error?.message || 'Unknown error');
   }
+
+  return resultArg.data;
 }

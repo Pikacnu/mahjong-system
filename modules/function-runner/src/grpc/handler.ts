@@ -3,10 +3,10 @@ import { Status } from '@grpc/grpc-js/build/src/constants';
 import { MahjongRunnerV1, MahjongCodeStorageV1, unaryCall } from 'proto';
 import { ErrorCode } from 'proto/src/generated/common';
 import { storageServiceClient } from './storage-client';
-import { WorkerManager } from '../manager/normal_runner_manager';
+import { WorkerManager } from '../manager/workerManager';
 import type { RunTaskPayload, VMOptions } from '../utils/type';
 import type { CodeCacher } from '../utils/cacher';
-import { LiveModuleManager } from '../manager/live_module_manager';
+import { LiveModuleManager } from '../manager/liveModuleManager';
 import { decodeFromBytes } from 'utils';
 
 const liveModuleManager = LiveModuleManager.getInstance();
@@ -27,7 +27,7 @@ export function createFunctionRunnerGRPCHandler({
         methodInfo,
       } as MahjongCodeStorageV1.GetMethodInfoRequest,
     );
-    return response.dependencies || [];
+    return response.data?.dependencies || [];
   };
 
   const fetchPluginDefinition = async (
@@ -41,11 +41,11 @@ export function createFunctionRunnerGRPCHandler({
       } as MahjongCodeStorageV1.GetPluginDefinitionRequest,
     );
 
-    const defaultStore = decodeFromBytes(response.defaultStore) ?? {};
+    const defaultStore = (response.data?.defaultStore) ?? {};
 
     return {
       defaultStore,
-      dependencies: response.dependencies || [],
+      dependencies: response.data?.dependencies || [],
     };
   };
 
@@ -56,7 +56,7 @@ export function createFunctionRunnerGRPCHandler({
         methodInfo,
       } as MahjongCodeStorageV1.GetResourceDataRequest,
     );
-    return response.code;
+    return response.data?.code;
   };
 
   const resolveFunctionCode = async (functionInfo: unknown) => {
@@ -120,7 +120,7 @@ export function createFunctionRunnerGRPCHandler({
         const result = await normalRunnerManager.execute(
           executeFunctionPayload,
         );
-        callback(null, { result });
+        callback(null, { success: true, data: result });
       } catch (err) {
         console.error('gRPC Error:', err);
         callback(
@@ -160,7 +160,7 @@ export function createFunctionRunnerGRPCHandler({
           methodInfo: manifest,
         } as MahjongCodeStorageV1.GetResourceDataRequest,
       );
-      if (!reosurceCodeInfo.code) {
+      if (!reosurceCodeInfo.data?.code) {
         return callback(
           {
             code: Status.INTERNAL,
@@ -176,10 +176,10 @@ export function createFunctionRunnerGRPCHandler({
         };
 
         const liveModuleId = await liveModuleManager.addLiveModule({
-          code: reosurceCodeInfo.code,
+          code: reosurceCodeInfo.data!.code,
           ...liveManifest,
         });
-        callback(null, { moduleId: liveModuleId });
+        callback(null, { success: true, moduleId: liveModuleId });
       } catch (err) {
         console.error('gRPC Error:', err);
         callback(
@@ -212,7 +212,7 @@ export function createFunctionRunnerGRPCHandler({
             args: payload?.args || [],
           },
         });
-        callback(null, { result });
+        callback(null, { success: true, data: result });
       } catch (err) {
         console.error('gRPC Error:', err);
         callback(
@@ -238,7 +238,7 @@ export function createFunctionRunnerGRPCHandler({
       }
       try {
         await liveModuleManager.removeLiveModule(moduleId);
-        callback(null, {});
+        callback(null, { success: true, data: {} as any });
       } catch (err) {
         console.error('gRPC Error:', err);
         callback(
@@ -267,7 +267,7 @@ export function createFunctionRunnerGRPCHandler({
           name: key,
           value,
         });
-        callback(null, {});
+        callback(null, { success: true, data: {} as any });
       } catch (err) {
         console.error('gRPC Error:', err);
         callback(
@@ -295,7 +295,7 @@ export function createFunctionRunnerGRPCHandler({
           moduleId,
           name: key,
         });
-        callback(null, { value });
+        callback(null, { success: true, data: value });
       } catch (err) {
         console.error('gRPC Error:', err);
         callback(
