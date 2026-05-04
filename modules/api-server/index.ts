@@ -2,7 +2,6 @@ import { createWebHandler } from 'utils';
 import { gameManagerHandler } from './src/endpoints/gameManager';
 import { pluginHandler } from './src/endpoints/pluginManager';
 import { pluginResourceHandler } from './src/endpoints/pluginResource';
-import { runnerHandler } from './src/endpoints/runner';
 import { roomManagerHandler } from '@/endpoints/roomManager';
 import { playerManagerHandler } from '@/endpoints/playerManager';
 import { runMigrate } from './db/migrater';
@@ -16,7 +15,6 @@ export const apiHandler = createWebHandler({
     '/api/game/management': gameManagerHandler,
     '/api/plugin/management': pluginHandler,
     '/api/plugin/resource': pluginResourceHandler,
-    '/api/runner/execute': runnerHandler,
     '/api/room/management': roomManagerHandler,
     '/api/player/management': playerManagerHandler,
   },
