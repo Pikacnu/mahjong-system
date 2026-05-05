@@ -1,12 +1,10 @@
 import { Server } from '@grpc/grpc-js';
 import { MahjongRoomV1 } from 'proto';
-import { Status } from '@grpc/grpc-js/build/src/constants';
 import type { GameInstanceManager } from '../manager/gameInstanceManager';
 
 import { connectionManager } from '@/classes/connectionManager';
 import {
   ReactionMessage,
-  GameChannelInfo,
   GameEventMessage,
 } from 'proto/src/generated/services/room';
 import { ErrorCode } from 'proto/src/generated/common';
@@ -21,9 +19,9 @@ export function createGrpcServer(manager: GameInstanceManager): Server {
         return callback(null, {
           success: false,
           error: {
-             code: ErrorCode.INVALID_ARGUMENT,
-             message: 'Room ID is required',
-          }
+            code: ErrorCode.INVALID_ARGUMENT,
+            message: 'Room ID is required',
+          },
         });
       }
       manager.createGameInstance(gameId);
@@ -35,9 +33,9 @@ export function createGrpcServer(manager: GameInstanceManager): Server {
         return callback(null, {
           success: false,
           error: {
-             code: ErrorCode.INVALID_ARGUMENT,
-             message: 'Game ID and event are required',
-          }
+            code: ErrorCode.INVALID_ARGUMENT,
+            message: 'Game ID and event are required',
+          },
         });
       }
       let gameInstance;
@@ -47,9 +45,9 @@ export function createGrpcServer(manager: GameInstanceManager): Server {
         return callback(null, {
           success: false,
           error: {
-             code: ErrorCode.NOT_FOUND,
-             message: `Game with ID ${gameId} not found`,
-          }
+            code: ErrorCode.NOT_FOUND,
+            message: `Game with ID ${gameId} not found`,
+          },
         });
       }
 
@@ -61,9 +59,9 @@ export function createGrpcServer(manager: GameInstanceManager): Server {
         return callback(null, {
           success: false,
           error: {
-             code: ErrorCode.INTERNAL_ERROR,
-             message: 'Failed to process room event',
-          }
+            code: ErrorCode.INTERNAL_ERROR,
+            message: 'Failed to process room event',
+          },
         });
       }
     },
@@ -113,7 +111,9 @@ export function createGrpcServer(manager: GameInstanceManager): Server {
 
         if (!isBoundToGame) {
           if (!gameId) {
-            console.error('First message must contain gameId to bind connection');
+            console.error(
+              'First message must contain gameId to bind connection',
+            );
             return;
           }
           boundGameId = gameId;
@@ -131,14 +131,16 @@ export function createGrpcServer(manager: GameInstanceManager): Server {
         try {
           const gameInstance = manager.getGameInstance(gameId);
           gameInstance.processedReceivedRoomAction(request.event, payload);
-        } catch (e) {
-        }
+        } catch (e) {}
       });
 
       call.on('end', () => {
         connection.getEventEmitter().off('message', outgoing);
         if (boundGameId)
-          connectionManager.unregisterRoomConnection(`${boundGameId}`, connectionId);
+          connectionManager.unregisterRoomConnection(
+            `${boundGameId}`,
+            connectionId,
+          );
         connectionManager.removeConnection(connectionId);
         call.end();
       });

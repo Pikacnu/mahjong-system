@@ -1,5 +1,5 @@
 import { Server } from '@grpc/grpc-js';
-import { MahjongCodeStorageV1, MahjongCommonV1 } from 'proto';
+import { MahjongCodeStorageV1 } from 'proto';
 import { ErrorCode } from 'proto/src/generated/common';
 import { db } from '../utils/db';
 import {

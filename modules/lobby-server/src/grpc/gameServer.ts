@@ -1,7 +1,6 @@
 import { credentials } from '@grpc/grpc-js';
 import { GAME_SERVER_HOSTNAME, GRPC_PORT } from 'utils';
 import { MahjongCodeStorageV1, MahjongRoomV1, unaryCall } from 'proto';
-import { ca } from 'zod/locales';
 import { Event } from 'proto/src/generated/services/room';
 
 function createGameClient(address: string): MahjongRoomV1.RoomServicesClient {

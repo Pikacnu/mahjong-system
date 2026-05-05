@@ -7,7 +7,6 @@ import { WorkerManager } from '../manager/workerManager';
 import type { RunTaskPayload, VMOptions } from '../utils/type';
 import type { CodeCacher } from '../utils/cacher';
 import { LiveModuleManager } from '../manager/liveModuleManager';
-import { decodeFromBytes } from 'utils';
 
 const liveModuleManager = LiveModuleManager.getInstance();
 
@@ -41,7 +40,7 @@ export function createFunctionRunnerGRPCHandler({
       } as MahjongCodeStorageV1.GetPluginDefinitionRequest,
     );
 
-    const defaultStore = (response.data?.defaultStore) ?? {};
+    const defaultStore = response.data?.defaultStore ?? {};
 
     return {
       defaultStore,

@@ -1,7 +1,13 @@
 import { db } from '#/db/index';
 import { player, room, roomPlayerBinding } from '#/db/schema';
 import { eq } from 'drizzle-orm';
-import { addPlayerToRoomSchema, handleValidationError } from '../utils/schemas';
+import {
+  addPlayerToRoomSchema,
+  createRoomSchema,
+  handleValidationError,
+} from '../utils/schemas';
+import { unaryCall } from 'proto';
+import { gameServiceClient } from '@/handler/room';
 
 export const GET = async (request: Request) => {
   const searchParams = new URL(request.url).searchParams;
@@ -54,46 +60,117 @@ export const GET = async (request: Request) => {
 
 export const POST = async (request: Request) => {
   const body = await request.json();
-  const validation = addPlayerToRoomSchema.safeParse(body);
-
-  if (!validation.success) {
-    return Response.json(handleValidationError(validation.error), {
-      status: 400,
-    });
-  }
-
-  const { playerId, roomId } = validation.data;
+  const addPlayerValidation = addPlayerToRoomSchema.safeParse(body);
+  const createRoomValidation = createRoomSchema.safeParse(body);
 
   try {
-    await db.transaction(async (tx) => {
-      const searchPlayerData = await tx
-        .select()
-        .from(player)
-        .where(eq(player.id, playerId))
-        .limit(1);
-      if (!searchPlayerData || searchPlayerData.length === 0) {
-        throw new Error('Player not found');
+    switch (true) {
+      case addPlayerValidation.success: {
+        const { playerId, roomId } = addPlayerValidation.data;
+
+        try {
+          await db.transaction(async (tx) => {
+            const searchPlayerData = await tx
+              .select()
+              .from(player)
+              .where(eq(player.id, playerId))
+              .limit(1);
+            if (!searchPlayerData || searchPlayerData.length === 0) {
+              throw new Error('Player not found');
+            }
+            const searchRoomData = await tx
+              .select()
+              .from(room)
+              .where(eq(room.id, roomId))
+              .limit(1);
+            if (!searchRoomData || searchRoomData.length === 0) {
+              throw new Error('Room not found');
+            }
+            await tx.insert(roomPlayerBinding).values({
+              roomId,
+              playerId,
+            });
+          });
+        } catch (error) {
+          return Response.json(
+            { error: (error as Error).message },
+            { status: 404 },
+          );
+        }
+        return Response.json(
+          { message: 'Player added to room successfully' },
+          { status: 200 },
+        );
       }
-      const searchRoomData = await tx
-        .select()
-        .from(room)
-        .where(eq(room.id, roomId))
-        .limit(1);
-      if (!searchRoomData || searchRoomData.length === 0) {
-        throw new Error('Room not found');
+      case createRoomValidation.success: {
+        const {} = createRoomValidation.data;
+        const now = Date.now();
+        const createRoomResult = await db.transaction(async (tx) => {
+          const insertRoomData = (
+            await tx
+              .insert(room)
+              .values({
+                status: 'waiting',
+                createdAt: now,
+                updatedAt: now,
+              })
+              .returning({
+                id: room.id,
+                status: room.status,
+                createdAt: room.createdAt,
+                updatedAt: room.updatedAt,
+              })
+          )[0];
+          if (!insertRoomData) {
+            tx.rollback();
+            return Response.json(
+              { message: 'Failed to create room' },
+              { status: 500 },
+            );
+          }
+          const createRoomResponse = await unaryCall(
+            gameServiceClient.createRoom.bind(gameServiceClient),
+            {
+              gameId: 0,
+            },
+          );
+          if (
+            !createRoomResponse.success ||
+            createRoomResponse.gameId === undefined
+          ) {
+            tx.rollback();
+            return Response.json(
+              { message: 'Failed to create game room' },
+              { status: 500 },
+            );
+          }
+          return Response.json(
+            {
+              message: 'Room created successfully',
+            },
+            { status: 200 },
+          );
+        });
+        return createRoomResult;
       }
-      await tx.insert(roomPlayerBinding).values({
-        roomId,
-        playerId,
-      });
-    });
+      default: {
+        return Response.json(
+          handleValidationError(createRoomValidation.error),
+          {
+            status: 400,
+          },
+        );
+      }
+    }
   } catch (error) {
-    return Response.json({ error: (error as Error).message }, { status: 404 });
+    console.error('Error processing room manager request:', error);
+    return Response.json(
+      {
+        message: 'Internal server error',
+      },
+      { status: 500 },
+    );
   }
-  return Response.json(
-    { message: 'Player added to room successfully' },
-    { status: 200 },
-  );
 };
 
 export const roomManagerHandler = {

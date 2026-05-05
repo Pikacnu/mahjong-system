@@ -60,6 +60,7 @@ export const createPlayerSchema = z.object({
 
 // ===== gameManager.ts schemas =====
 export const createGameSchema = z.object({
+  roomId: z.number(),
   status: z
     .enum(['waiting', 'playing', 'finished'])
     .optional()
@@ -75,6 +76,8 @@ export const addPlayerToRoomSchema = z.object({
   playerId: z.number().int().positive('Player ID must be a positive integer'),
   roomId: z.number().int().positive('Room ID must be a positive integer'),
 });
+
+export const createRoomSchema = z.object({});
 
 // ===== pluginManager.ts schemas =====
 export const getPluginDefinitionSchema = z.object({

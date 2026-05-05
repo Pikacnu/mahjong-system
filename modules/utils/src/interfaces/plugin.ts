@@ -1,13 +1,13 @@
+import { z } from 'zod';
 import type { ActionSharedData } from '.';
 import type { GameSnapshot, MahjongTile, PlayerAction } from '../mahjong/type';
 
-// Mirrors storage.proto::MethodInfo
-export type MethodInfo = {
-  name: string;
-  version: number;
-};
+export const MethodInfoSchema = z.object({
+  name: z.string(),
+  version: z.number(),
+});
+export type MethodInfo = z.infer<typeof MethodInfoSchema>;
 
-// Mirrors storage.proto::ResourceSource
 export enum ResourceSource {
   BUILTIN = 'BUILTIN',
   USER = 'USER',
@@ -30,26 +30,29 @@ export enum PluginCapability {
   Command = 'command',
 }
 
-export type PluginManifest = {
-  id: string;
-  name: string;
-  version: string;
-  description?: string;
-  capabilities?: readonly PluginCapability[];
-  // Corresponding code resource for storage/runner lookup.
-  methodInfo?: MethodInfo;
-  resourceSource?: ResourceSource;
-};
+export const PluginManifestSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  version: z.string(),
+  description: z.string().optional(),
+  capabilities: z.array(z.nativeEnum(PluginCapability)).readonly().optional(),
+  methodInfo: MethodInfoSchema.optional(),
+  resourceSource: z.nativeEnum(ResourceSource).optional(),
+});
+export type PluginManifest = z.infer<typeof PluginManifestSchema>;
 
-// runner.proto::CreateLiveModuleRequest compatibility
-export type PluginLiveRuntimeConfig =
-  | {
-      defaultState: unknown;
-      ttlMs?: number;
-    }
-  | {
-      ttlMs?: number;
-    };
+export const PluginLiveRuntimeConfigSchema = z.union([
+  z.object({
+    defaultState: z.unknown(),
+    ttlMs: z.number().optional(),
+  }),
+  z.object({
+    ttlMs: z.number().optional(),
+  }),
+]);
+export type PluginLiveRuntimeConfig = z.infer<
+  typeof PluginLiveRuntimeConfigSchema
+>;
 
 export enum LifecycleHookType {
   Init = 'onInit',
@@ -72,10 +75,13 @@ export enum DecisionHookType {
   ScoreDistribution = 'onScoreDistribution',
 }
 
-// Backward compatible alias for older naming.
 export { DecisionHookType as ActionHookType };
 
-export type HookType = LifecycleHookType | DecisionHookType;
+export const HookTypeSchema = z.union([
+  z.nativeEnum(LifecycleHookType),
+  z.nativeEnum(DecisionHookType),
+]);
+export type HookType = z.infer<typeof HookTypeSchema>;
 
 export enum PluginHookCategory {
   Lifecycle = 'lifecycle',
@@ -87,11 +93,12 @@ export enum PluginHookMode {
   Command = 'command',
 }
 
-export type PluginHookDefinition = {
-  type: HookType;
-  category: PluginHookCategory;
-  mode: PluginHookMode;
-};
+export const PluginHookDefinitionSchema = z.object({
+  type: HookTypeSchema,
+  category: z.nativeEnum(PluginHookCategory),
+  mode: z.nativeEnum(PluginHookMode),
+});
+export type PluginHookDefinition = z.infer<typeof PluginHookDefinitionSchema>;
 
 export enum PluginActionType {
   STANDARD = 'STANDARD',
@@ -99,68 +106,91 @@ export enum PluginActionType {
   EVALUATION = 'EVALUATION',
 }
 
-export type PluginActionDefinition = {
-  id: string;
-  label: string;
-  type: PluginActionType;
-  payload?: Record<string, unknown>;
-};
+export const PluginActionDefinitionSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  type: z.nativeEnum(PluginActionType),
+  payload: z.record(z.string(), z.unknown()).optional(),
+});
+export type PluginActionDefinition = z.infer<
+  typeof PluginActionDefinitionSchema
+>;
 
-export type PluginHookPayloads = {
-  [LifecycleHookType.Init]: {
-    storage?: unknown;
-  };
-  [LifecycleHookType.Restore]: {
-    storage: unknown;
-    snapshot: GameSnapshot;
-  };
-  [LifecycleHookType.GameStart]: {};
-  [LifecycleHookType.RoundStart]: {
-    roundIndex: number;
-  };
-  [LifecycleHookType.PlayerGetsTile]: {
-    playerId: string;
-    tile: MahjongTile;
-  };
-  [LifecycleHookType.RoundEnd]: {
-    roundIndex: number;
-  };
-  [LifecycleHookType.GameEnd]: {
-    finalPlayerScores: Record<string, number>;
-  };
-  [LifecycleHookType.Unload]: {
-    reason?: string;
-  };
-  [LifecycleHookType.Dispose]: {
-    reason?: string;
-  };
-  [DecisionHookType.EvaluateAvailableActions]: {
-    playerId: string;
-    tiles: MahjongTile[];
-    discardedTiles?: Set<MahjongTile>;
-  };
-  [DecisionHookType.ValidateAction]: {
-    playerId: string;
-    action: PlayerAction;
-    tiles: MahjongTile[];
-    discardedTiles?: Set<MahjongTile>;
-  };
-  [DecisionHookType.ResolveAction]: {
-    playerId: string;
-    action: PlayerAction;
-    tiles: MahjongTile[];
-    discardedTiles?: Set<MahjongTile>;
-  };
-  [DecisionHookType.EvaluateHand]: Omit<ActionSharedData, 'isCurrentPlayer'>;
-  [DecisionHookType.CalculateScore]: Omit<ActionSharedData, 'isCurrentPlayer'> &
-    any;
-  [DecisionHookType.ScoreDistribution]: Omit<
-    ActionSharedData,
-    'isCurrentPlayer'
-  > & {
-    originalScore: number;
-  };
-};
+export const PluginHookPayloadsSchema = z.object({
+  [LifecycleHookType.Init]: z.object({
+    storage: z.unknown().optional(),
+  }),
+  [LifecycleHookType.Restore]: z.object({
+    storage: z.unknown(),
+    snapshot: z.custom<GameSnapshot>(),
+  }),
+  [LifecycleHookType.GameStart]: z.object({}),
+  [LifecycleHookType.RoundStart]: z.object({
+    roundIndex: z.number(),
+  }),
+  [LifecycleHookType.PlayerGetsTile]: z.object({
+    playerId: z.string(),
+    tile: z.custom<MahjongTile>(),
+  }),
+  [LifecycleHookType.RoundEnd]: z.object({
+    roundIndex: z.number(),
+  }),
+  [LifecycleHookType.GameEnd]: z.object({
+    finalPlayerScores: z.record(z.string(), z.number()),
+  }),
+  [LifecycleHookType.Unload]: z.object({
+    reason: z.string().optional(),
+  }),
+  [LifecycleHookType.Dispose]: z.object({
+    reason: z.string().optional(),
+  }),
+  [DecisionHookType.EvaluateAvailableActions]: z.object({
+    playerId: z.string(),
+    tiles: z.array(z.custom<MahjongTile>()),
+    discardedTiles: z.custom<Set<MahjongTile>>().optional(),
+  }),
+  [DecisionHookType.ValidateAction]: z.object({
+    playerId: z.string(),
+    action: z.custom<PlayerAction>(),
+    tiles: z.array(z.custom<MahjongTile>()),
+    discardedTiles: z.custom<Set<MahjongTile>>().optional(),
+  }),
+  [DecisionHookType.ResolveAction]: z.object({
+    playerId: z.string(),
+    action: z.custom<PlayerAction>(),
+    tiles: z.array(z.custom<MahjongTile>()),
+    discardedTiles: z.custom<Set<MahjongTile>>().optional(),
+  }),
+  [DecisionHookType.EvaluateHand]:
+    z.custom<Omit<ActionSharedData, 'isCurrentPlayer'>>(),
+  [DecisionHookType.CalculateScore]: z.custom<
+    Omit<ActionSharedData, 'isCurrentPlayer'> & any
+  >(),
+  [DecisionHookType.ScoreDistribution]: z.custom<
+    Omit<ActionSharedData, 'isCurrentPlayer'> & { originalScore: number }
+  >(),
+});
+
+export type PluginHookPayloads = z.infer<typeof PluginHookPayloadsSchema>;
+
+export const PluginHookContextSchema = <
+  StorageType extends z.ZodType,
+  PayloadType extends z.ZodType,
+>(
+  storageSchema: StorageType,
+  payloadSchema: PayloadType,
+) =>
+  z.object({
+    requestId: z.string(),
+    manifest: PluginManifestSchema,
+    hook: HookTypeSchema,
+    category: z.nativeEnum(PluginHookCategory),
+    mode: z.nativeEnum(PluginHookMode),
+    storage: storageSchema,
+    payload: payloadSchema,
+    playerId: z.string().optional(),
+    roundIndex: z.number().optional(),
+  });
 
 export type PluginHookContext<StorageType, PayloadType> = {
   requestId: string;
@@ -185,12 +215,72 @@ export enum GameStatusPatches {
 export enum PlayerStatusPatches {
   PlayerHandTile,
   PlayerHandTiles,
-  PlayerDrawedTiles, // unknown usage
-  PlayerActionTiles, // unknown usage
+  PlayerDrawedTiles,
+  PlayerActionTiles,
   PlayerScores,
 }
 
 export type PatchesType = GameStatusPatches | PlayerStatusPatches;
+
+export const PlayerStatusPatchesArgumentSchema = z.object({
+  [PlayerStatusPatches.PlayerHandTile]: z.object({
+    playerId: z.string(),
+    handTile: z.custom<MahjongTile>(),
+    replaceTile: z.custom<MahjongTile>().optional(),
+  }),
+  [PlayerStatusPatches.PlayerHandTiles]: z.object({
+    playerId: z.string(),
+    handTiles: z.array(z.custom<MahjongTile>()),
+  }),
+  [PlayerStatusPatches.PlayerDrawedTiles]: z.object({
+    playerId: z.string(),
+    drawedTiles: z.array(z.custom<MahjongTile>()),
+  }),
+  [PlayerStatusPatches.PlayerActionTiles]: z.object({
+    playerId: z.string(),
+    actionTiles: z.array(z.custom<MahjongTile>()),
+  }),
+  [PlayerStatusPatches.PlayerScores]: z.object({
+    playerId: z.string(),
+    delta: z.number(),
+  }),
+});
+
+export type PlayerStatusPatchesArgument = z.infer<
+  typeof PlayerStatusPatchesArgumentSchema
+>;
+
+export enum PatchActionType {
+  Update,
+  Add,
+  Remove,
+}
+
+export const GameStatusPatchesArgumentSchema = z.object({
+  [GameStatusPatches.RedDoraTile]: z.object({
+    redDoraTile: z.custom<MahjongTile>(),
+    action: z.custom<Exclude<PatchActionType, PatchActionType.Remove>>(),
+  }),
+  [GameStatusPatches.UraDoraTile]: z.object({
+    uraDoraTile: z.custom<MahjongTile & { isOpen: boolean }>(),
+    action: z.custom<Exclude<PatchActionType, PatchActionType.Remove>>(),
+  }),
+  [GameStatusPatches.GameStats]: z.object({
+    stats: z.record(z.string(), z.unknown()),
+  }),
+  [GameStatusPatches.GameEnd]: z.object({}),
+});
+
+export type GameStatusPatchesArgument = z.infer<
+  typeof GameStatusPatchesArgumentSchema
+>;
+
+export const PatchesArgumentSchema = GameStatusPatchesArgumentSchema.merge(
+  PlayerStatusPatchesArgumentSchema,
+);
+
+export type PatchesArgument = GameStatusPatchesArgument &
+  PlayerStatusPatchesArgument;
 
 export type GameStatsPatch<
   T extends keyof PatchesArgument = keyof PatchesArgument,
@@ -201,64 +291,41 @@ export type GameStatsPatch<
     }
   : never;
 
-export enum PatchActionType {
-  Update,
-  Add,
-  Remove,
-}
-
-export interface PlayerStatusPatchesArgument {
-  [PlayerStatusPatches.PlayerHandTile]: {
-    playerId: string;
-    handTile: MahjongTile;
-    replaceTile?: MahjongTile;
-  };
-  [PlayerStatusPatches.PlayerHandTiles]: {
-    playerId: string;
-    handTiles: MahjongTile[];
-  };
-  [PlayerStatusPatches.PlayerDrawedTiles]: {
-    playerId: string;
-    drawedTiles: MahjongTile[];
-  };
-  [PlayerStatusPatches.PlayerActionTiles]: {
-    playerId: string;
-    actionTiles: MahjongTile[];
-  };
-  [PlayerStatusPatches.PlayerScores]: {
-    playerId: string;
-    delta: number;
-  };
-}
-
-export interface GameStatusPatchesArgument {
-  [GameStatusPatches.RedDoraTile]: {
-    redDoraTile: MahjongTile;
-    action: Exclude<PatchActionType, PatchActionType.Remove>;
-  };
-  [GameStatusPatches.UraDoraTile]: {
-    uraDoraTile: MahjongTile & { isOpen: boolean };
-    action: Exclude<PatchActionType, PatchActionType.Remove>;
-  };
-  [GameStatusPatches.GameStats]: {
-    stats: Record<string, unknown>;
-  };
-  [GameStatusPatches.GameEnd]: {};
-}
-
-export type PatchesArgument = GameStatusPatchesArgument &
-  PlayerStatusPatchesArgument;
-
 export enum StoragePatchType {
   Global,
   Plugin,
 }
+
+export const StoragePatchSchema = <T extends z.ZodType>(valueSchema: T) =>
+  z.object({
+    type: z.enum(StoragePatchType),
+    key: z.string(),
+    value: valueSchema,
+  });
 
 export type StoragePatch<T> = {
   type: StoragePatchType;
   key: keyof T;
   value: T[keyof T];
 };
+
+export const PluginHookResultSchema = <
+  StorageType extends z.ZodType,
+  ActionType extends z.ZodType,
+>(
+  storageSchema: StorageType,
+  actionSchema: ActionType,
+) =>
+  z
+    .object({
+      pluginStorage: storageSchema.optional(),
+      storagePatch: z.array(StoragePatchSchema(storageSchema)).optional(),
+      gameStatsPatch: z.array(z.custom<GameStatsPatch>()).optional(),
+      pluginAction: z.array(actionSchema).readonly().optional(),
+      stopPropagation: z.boolean().optional(),
+      reject: z.boolean().optional(),
+    })
+    .optional();
 
 export type PluginHookResult<
   StorageType,
@@ -271,12 +338,11 @@ export type PluginHookResult<
       pluginAction?: readonly ActionType[];
       stopPropagation?: boolean;
       reject?: boolean;
-      // reject work as stopPropagation but also indicates the action is rejected,
-      // which can be used by caller to show feedback to user.
-      // For exp : Furtien can reject a Ron declaration if it determines the player is not in Tenpai,
-      // and the game server can show "Ron declaration rejected" feedback to user based on the reject flag.
     }
   | undefined;
+
+export const WithPluginIdSchema = <T extends z.ZodType>(schema: T) =>
+  schema.and(z.object({ pluginId: z.string() }));
 
 export type WithPluginId<T> = T & {
   pluginId: string;
@@ -319,26 +385,37 @@ export type PluginInstance<StorageType> = {
 export type PluginImplementation<StorageType> =
   PluginInstance<StorageType>['implementation'];
 
-// runtime live_module_runner.ts and runner.proto contracts
-export type LiveModuleFunctionArgs = {
-  this: unknown;
-  args: unknown[];
-};
+export const LiveModuleFunctionArgsSchema = z.object({
+  this: z.unknown(),
+  args: z.array(z.unknown()),
+});
+export type LiveModuleFunctionArgs = z.infer<
+  typeof LiveModuleFunctionArgsSchema
+>;
 
-export type RunnerCreateLiveModulePayload = {
-  manifest: MethodInfo;
-};
+export const RunnerCreateLiveModulePayloadSchema = z.object({
+  manifest: MethodInfoSchema,
+});
+export type RunnerCreateLiveModulePayload = z.infer<
+  typeof RunnerCreateLiveModulePayloadSchema
+>;
 
-export type RunnerCallLiveModulePayload = {
-  moduleId: string;
-  functionName: string;
-  payload: LiveModuleFunctionArgs;
-};
+export const RunnerCallLiveModulePayloadSchema = z.object({
+  moduleId: z.string(),
+  functionName: z.string(),
+  payload: LiveModuleFunctionArgsSchema,
+});
+export type RunnerCallLiveModulePayload = z.infer<
+  typeof RunnerCallLiveModulePayloadSchema
+>;
 
-export type RunnerLiveModuleBinding = {
-  pluginId: string;
-  moduleId: string;
-  manifest: MethodInfo;
-  runtime: PluginLiveRuntimeConfig;
-  dependencies: MethodInfo[];
-};
+export const RunnerLiveModuleBindingSchema = z.object({
+  pluginId: z.string(),
+  moduleId: z.string(),
+  manifest: MethodInfoSchema,
+  runtime: PluginLiveRuntimeConfigSchema,
+  dependencies: z.array(MethodInfoSchema),
+});
+export type RunnerLiveModuleBinding = z.infer<
+  typeof RunnerLiveModuleBindingSchema
+>;

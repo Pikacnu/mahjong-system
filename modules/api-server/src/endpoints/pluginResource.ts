@@ -145,7 +145,7 @@ export const GET = async (req: Request) => {
       },
     );
     console.log('get resource response : ', response);
-    if (!response.code) {
+    if (!response?.data) {
       return Response.json(
         {
           message: 'Resource not found',
@@ -155,15 +155,9 @@ export const GET = async (req: Request) => {
         },
       );
     }
-    return Response.json(
-      {
-        code: response.code,
-        hash: response.hash,
-      },
-      {
-        status: 200,
-      },
-    );
+    return Response.json(response.data, {
+      status: 200,
+    });
   } catch (e) {
     console.error(e);
     return Response.json(

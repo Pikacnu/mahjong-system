@@ -13,6 +13,9 @@ export const GET = async (request: Request) => {
       .where(eq(player.id, Number(playerId)))
       .limit(1)
   )[0];
+  if (!searchPlayerData) {
+    return Response.json({ message: 'Player not found' }, { status: 404 });
+  }
   return Response.json(searchPlayerData, {
     status: 200,
   });
@@ -30,17 +33,26 @@ export const POST = async (request: Request) => {
 
   const { playerName } = validation.data;
 
-  const insertPlayerData = await db
-    .insert(player)
-    .values({
-      name: playerName,
-    })
-    .returning({
-      id: player.id,
-      name: player.name,
-    });
+  const insertPlayerData = (
+    await db
+      .insert(player)
+      .values({
+        name: playerName,
+      })
+      .returning({
+        id: player.id,
+        name: player.name,
+      })
+  )[0];
 
-  return Response.json(insertPlayerData[0], {
+  if (!insertPlayerData) {
+    return Response.json(
+      { message: 'Failed to create player' },
+      { status: 500 },
+    );
+  }
+
+  return Response.json(insertPlayerData, {
     status: 200,
   });
 };

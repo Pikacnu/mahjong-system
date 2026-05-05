@@ -18,7 +18,6 @@ import {
 import { Player } from './player';
 import { Table } from './table';
 import { Round } from './round';
-import { EventEmitter } from 'events';
 import { Connection, connectionManager } from '@/classes/connectionManager';
 
 export type GameEndCallbackData = {
