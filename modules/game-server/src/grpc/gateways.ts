@@ -92,7 +92,38 @@ export function createStorageGateway(address: string): StorageGateway {
       return {
         defaultStore: response.data!.defaultStore,
         dependencies: response.data!.dependencies,
+        hooks:
+          response
+            .data!.hooks.map((h) => {
+              if (
+                h.category === MahjongCodeStorageV1.HookCategory.UNRECOGNIZED
+              ) {
+                return undefined;
+              }
+
+              return {
+                type: h.type,
+                category: hookCategories[h.category],
+                mode: hookModes[h.mode],
+              } as {
+                type: string;
+                category: 'lifecycle' | 'decision';
+                mode: 'query' | 'command';
+              };
+            })
+            .filter((h): h is NonNullable<typeof h> => !!h) || [],
       };
     },
   };
 }
+
+const hookCategories = {
+  [MahjongCodeStorageV1.HookCategory.LIFECYCLE]: 'lifecycle',
+  [MahjongCodeStorageV1.HookCategory.DECISION]: 'decision',
+};
+
+const hookModes = {
+  [MahjongCodeStorageV1.HookMode.QUERY]: 'query',
+  [MahjongCodeStorageV1.HookMode.COMMAND]: 'command',
+  [MahjongCodeStorageV1.HookMode.UNRECOGNIZED]: 'query',
+};

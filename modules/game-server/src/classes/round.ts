@@ -3,6 +3,7 @@ import {
   ActionHookType,
   GameEndTypeEnum,
   GameMessageEnum,
+  type GameMessagePayloads,
   type GameNextRequest,
   type GameNextResponse,
   type GameStatsPatch,
@@ -101,7 +102,9 @@ export class Round {
     this.game = gameClass;
   }
 
-  private boardcastMessage(...args: Parameters<Game['broadcastEvent']>): void {
+  private boardcastMessage<T extends GameMessageEnum>(
+    ...args: [event: T, payload: GameMessagePayloads[T]]
+  ): void {
     return this.game?.broadcastEvent(...args);
   }
 
@@ -125,6 +128,7 @@ export class Round {
     this.playerIdForTurnOrder = shuffleArray(Array.from(this.players.keys()));
     this.currentPlayerIndex = 0;
     this.roundStatus = MahjongGameRoundStatus.PlayerGetsTile;
+    this.boardcastMessage(GameMessageEnum.RoundStart, {});
     await this.runHook({
       hook: LifecycleHookType.RoundStart,
       requestId: this.currentRequestId,

@@ -98,8 +98,10 @@ export const pluginDefinitions = schema.table(
     versionId: integer('version_id')
       .notNull()
       .references(() => versions.id),
-    // Stored as JSON string to keep payload format-agnostic.
+    // Can Change to jsonb in pg
     defaultStore: text('default_store').notNull().default('{}'),
+    // Can Change to Array in pg
+    hooks: text('hooks').notNull().default('[]'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

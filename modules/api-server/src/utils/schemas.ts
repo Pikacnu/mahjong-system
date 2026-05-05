@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ResourceType } from 'proto/src/generated/services/storage';
+import { PluginHookDefinitionSchema } from 'utils';
 
 // MethodInfo schema
 export const methodInfoSchema = z.object({
@@ -87,6 +88,7 @@ export const getPluginDefinitionSchema = z.object({
 export const storePluginDefinitionSchema = z.object({
   methodInfo: methodInfoSchema,
   defaultStore: z.record(z.string(), z.any()).optional(),
+  hooks: z.array(PluginHookDefinitionSchema).optional().default([]),
 });
 
 // Helper function to handle validation errors

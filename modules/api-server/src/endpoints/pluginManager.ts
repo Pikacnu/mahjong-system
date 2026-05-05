@@ -1,4 +1,5 @@
 import { MahjongCodeStorageV1, unaryCall } from 'proto';
+import { HookCategory, HookMode } from 'proto/src/generated/services/storage';
 import { storageServiceClient } from '../handler/storage';
 import {
   methodInfoSchema,
@@ -83,10 +84,14 @@ const GET = async (req: Request) => {
     return Response.json(
       {
         methodInfo,
-        defaultStore: dataReponsse.defaultStore
-          ? JSON.parse(new TextDecoder().decode(dataReponsse.defaultStore))
-          : null,
-        dependencies: dataReponsse.dependencies,
+        defaultStore: dataReponsse.data?.defaultStore ?? null,
+        hooks: (dataReponsse.data?.hooks ?? []).map((hook) => ({
+          type: hook.type,
+          category:
+            hook.category === HookCategory.DECISION ? 'decision' : 'lifecycle',
+          mode: hook.mode === HookMode.COMMAND ? 'command' : 'query',
+        })),
+        dependencies: dataReponsse.data?.dependencies,
       },
       {
         status: 200,
@@ -113,7 +118,7 @@ async function isResourceExist(methodInfo: { name: string; version: number }) {
       methodInfo,
     },
   );
-  return pluginDataReponsse.dependencies !== null;
+  return pluginDataReponsse.data?.dependencies !== null;
 }
 
 const POST = async (req: Request) => {
@@ -126,20 +131,22 @@ const POST = async (req: Request) => {
     });
   }
 
-  const { methodInfo, defaultStore } = validation.data;
+  const { methodInfo, defaultStore, hooks } = validation.data;
 
   try {
     const storePluginCodeRespose = await unaryCall(
       storageServiceClient.storePluginDefinition.bind(storageServiceClient),
       {
         methodInfo,
-        ...(defaultStore
-          ? {
-              defaultStore: new TextEncoder().encode(
-                JSON.stringify(defaultStore),
-              ) as Buffer,
-            }
-          : {}),
+        defaultStore: defaultStore ?? {},
+        hooks: hooks.map((hook) => ({
+          type: hook.type,
+          category:
+            hook.category === 'decision'
+              ? HookCategory.DECISION
+              : HookCategory.LIFECYCLE,
+          mode: hook.mode === 'command' ? HookMode.COMMAND : HookMode.QUERY,
+        })),
         sourceType: 1,
       } as MahjongCodeStorageV1.StorePluginDefinitionRequest,
     );

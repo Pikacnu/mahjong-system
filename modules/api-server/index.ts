@@ -50,4 +50,15 @@ export const apiHandler = createWebHandler({
       },
     );
   },
+  websocket: {
+    message(ws, message) {
+      console.log('Received WebSocket message:', message);
+      ws.send(
+        JSON.stringify({
+          message:
+            'IDK why this need websocket but here is the echo of your message',
+        }),
+      );
+    },
+  },
 });

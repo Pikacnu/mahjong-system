@@ -1,2 +1,2 @@
 export * from './plugins/plugin-manager';
-export * from './grpc/runner';
+export * from './grpc/gateways';

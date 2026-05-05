@@ -45,13 +45,6 @@ export const POST = async (request: Request) => {
       })
   )[0];
 
-  if (!insertPlayerData) {
-    return Response.json(
-      { message: 'Failed to create player' },
-      { status: 500 },
-    );
-  }
-
   return Response.json(insertPlayerData, {
     status: 200,
   });

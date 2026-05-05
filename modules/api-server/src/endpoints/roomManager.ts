@@ -8,6 +8,7 @@ import {
 } from '../utils/schemas';
 import { unaryCall } from 'proto';
 import { gameServiceClient } from '@/handler/room';
+import { Event } from 'proto/src/generated/services/room';
 
 export const GET = async (request: Request) => {
   const searchParams = new URL(request.url).searchParams;
@@ -68,40 +69,66 @@ export const POST = async (request: Request) => {
       case addPlayerValidation.success: {
         const { playerId, roomId } = addPlayerValidation.data;
 
-        try {
-          await db.transaction(async (tx) => {
-            const searchPlayerData = await tx
-              .select()
-              .from(player)
-              .where(eq(player.id, playerId))
-              .limit(1);
-            if (!searchPlayerData || searchPlayerData.length === 0) {
-              throw new Error('Player not found');
-            }
-            const searchRoomData = await tx
-              .select()
-              .from(room)
-              .where(eq(room.id, roomId))
-              .limit(1);
-            if (!searchRoomData || searchRoomData.length === 0) {
-              throw new Error('Room not found');
-            }
-            await tx.insert(roomPlayerBinding).values({
-              roomId,
-              playerId,
-            });
+        const addPlayerExecutionResult = await db.transaction(async (tx) => {
+          const searchPlayerData = await tx
+            .select()
+            .from(player)
+            .where(eq(player.id, playerId))
+            .limit(1);
+          if (!searchPlayerData || searchPlayerData.length === 0) {
+            tx.rollback();
+            return Response.json(
+              { message: 'Player not found' },
+              { status: 404 },
+            );
+          }
+          const searchRoomData = await tx
+            .select()
+            .from(room)
+            .where(eq(room.id, roomId))
+            .limit(1);
+          if (!searchRoomData || searchRoomData.length === 0) {
+            tx.rollback();
+            return Response.json(
+              { message: 'Room not found' },
+              { status: 404 },
+            );
+          }
+          await tx.insert(roomPlayerBinding).values({
+            roomId,
+            playerId,
           });
-        } catch (error) {
-          return Response.json(
-            { error: (error as Error).message },
-            { status: 404 },
+          const addPlayerRoRoomEventResponse = await unaryCall(
+            gameServiceClient.sendRoomEvent.bind(gameServiceClient),
+            {
+              gameId: roomId,
+              event: Event.PLAYER_JOINED,
+              payload: {},
+            },
           );
-        }
-        return Response.json(
-          { message: 'Player added to room successfully' },
-          { status: 200 },
-        );
+          if (!addPlayerRoRoomEventResponse.success) {
+            tx.rollback();
+            console.log(
+              'Failed to send player joined event to game server for playerId:',
+              playerId,
+              'roomId:',
+              roomId,
+              'error:',
+              addPlayerRoRoomEventResponse.error,
+            );
+            return Response.json(
+              {
+                message:
+                  'Failed to send player joined event to game server,error:' +
+                  addPlayerRoRoomEventResponse.error?.message,
+              },
+              { status: 500 },
+            );
+          }
+        });
+        return addPlayerExecutionResult;
       }
+
       case createRoomValidation.success: {
         const {} = createRoomValidation.data;
         const now = Date.now();
@@ -131,7 +158,7 @@ export const POST = async (request: Request) => {
           const createRoomResponse = await unaryCall(
             gameServiceClient.createRoom.bind(gameServiceClient),
             {
-              gameId: 0,
+              gameId: insertRoomData.id,
             },
           );
           if (

@@ -4,6 +4,7 @@ package mahjong.game_server.v1;
 import "common.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/struct.proto";
+import "services/storage.proto";
 
 enum RoomStatus {
   WAITING = 0;
@@ -19,28 +20,28 @@ enum Event {
   ROUND_STATUS_CHANGED = 4;
   CHANGE_PLAYER_HAND = 5;
 
-  PLAYER_DRAWS_TILE = 100;
-  PLAYER_DISCARDS_TILE = 101;
-  PLAYER_CHI = 102;
-  PLAYER_PON = 103;
-  PLAYER_KAN = 104;
-  PLAYER_RON = 105;
-  PLAYER_TSUMO = 106;
-  PLAYER_RIICHI = 107;
+  PLAYER_DRAWS_TILE = 6;
+  PLAYER_DISCARDS_TILE = 7;
+  PLAYER_CHI = 8;
+  PLAYER_PON = 9;
+  PLAYER_KAN = 10;
+  PLAYER_RON = 11;
+  PLAYER_TSUMO = 12;
+  PLAYER_RIICHI = 13;
 
-  PLAYER_GETS_TILE = 200;
+  PLAYER_GETS_TILE = 14;
 
-  SHOW_ACTIONS = 300;
-  SHOW_AVAILABLE_ACTIONS = 301;
-  SHOW_HINT = 302;
-  SHOW_ERROR = 303;
-  SHOW_INFO = 304;
+  SHOW_ACTIONS = 15;
+  SHOW_AVAILABLE_ACTIONS = 16;
+  SHOW_HINT = 17;
+  SHOW_ERROR = 18;
+  SHOW_INFO = 19;
 
-  PLAYER_CONNECTED = 400;
-  PLAYER_DISCONNECTED = 401;
-  PLAYER_JOINED = 402;
-  PLAYER_LEFT = 403;
-  CONNECTION_ESTABLISH = 404;
+  PLAYER_CONNECTED = 20;
+  PLAYER_DISCONNECTED = 21;
+  PLAYER_JOINED = 22;
+  PLAYER_LEFT = 23;
+  CONNECTION_ESTABLISH = 24;
 }
 
 message CreateGameRequest {
@@ -85,9 +86,55 @@ message ReactionMessage {
   optional google.protobuf.Struct payload = 4;
 }
 
+message pluginManifest {
+  string name = 1;
+  string description = 2;
+}
+
+message AddPluginRequest {
+  int32 game_id = 1;
+  mahjong.code_storage.v1.MethodInfo pluginInfo = 2;
+  int32 priority = 3;
+}
+
+message AddPluginResponse {
+  bool success = 1;
+  optional mahjong.common.v1.ApiError error = 2;
+}
+
+message RemovePluginRequest {
+  int32 game_id = 1;
+  mahjong.code_storage.v1.MethodInfo pluginInfo = 2;
+}
+
+message RemovePluginResponse {
+  bool success = 1;
+  optional mahjong.common.v1.ApiError error = 2;
+}
+
+message ListPluginsRequest {
+  int32 game_id = 1;
+}
+
+message PluginInfoWithPriority {
+  mahjong.code_storage.v1.MethodInfo pluginInfo = 1;
+  int32 priority = 2;
+}
+
+message ListPluginsResponse {
+  bool success = 1;
+  repeated PluginInfoWithPriority pluginInfos = 2;
+  optional mahjong.common.v1.ApiError error = 3;
+}
+
 service RoomServices {
   rpc CreateRoom (CreateGameRequest) returns (CreateGameResponse);
   rpc SendRoomEvent (SendGameEventRequest) returns (SendGameEventResponse);
+
   rpc SubscribeRoomEvents (GameChannelInfo) returns (stream GameEventMessage);
   rpc GameChannel (stream ReactionMessage) returns (stream ReactionMessage);
+
+  rpc AddRoomPlugin (AddPluginRequest) returns (AddPluginResponse);
+  rpc RemoveRoomPlugin (RemovePluginRequest) returns (RemovePluginResponse);
+  rpc ListRoomPlugins (ListPluginsRequest) returns (ListPluginsResponse);
 }

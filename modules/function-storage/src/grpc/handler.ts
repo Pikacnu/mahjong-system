@@ -13,6 +13,12 @@ import {
 import { and, desc, eq } from 'drizzle-orm';
 import { dependencies as depsSchema } from './../../db/schema';
 import { Empty } from 'proto/src/generated/google/protobuf/empty';
+import { HookCategory, HookMode } from 'proto/src/generated/services/storage';
+import {
+  PluginHookDefinitionSchema,
+  PluginHookCategory,
+  PluginHookMode,
+} from 'utils';
 
 async function getMethodInfo(
   name: string,
@@ -195,6 +201,7 @@ export function createGrpcServer(): Server {
       const definition = await db
         .select({
           defaultStore: pluginDefinitions.defaultStore,
+          hooks: pluginDefinitions.hooks,
         })
         .from(pluginDefinitions)
         .where(eq(pluginDefinitions.versionId, versionData.id))
@@ -216,9 +223,51 @@ export function createGrpcServer(): Server {
       callback(null, {
         success: true,
         data: {
-          defaultStore: JSON.parse(definition.defaultStore),
+          /*
+            Need Review
+          */
+          defaultStore: (() => {
+            try {
+              const parsed = JSON.parse(definition.defaultStore) as unknown;
+              return parsed && typeof parsed === 'object'
+                ? (parsed as Record<string, unknown>)
+                : {};
+            } catch {
+              return {};
+            }
+          })(),
+          hooks: (() => {
+            try {
+              const parsed = JSON.parse(definition.hooks) as unknown;
+              if (!Array.isArray(parsed)) {
+                return [];
+              }
+              return parsed.flatMap((hook) => {
+                const hookResult = PluginHookDefinitionSchema.safeParse(hook);
+                if (!hookResult.success) {
+                  return [];
+                }
+                return [
+                  {
+                    type: hookResult.data.type,
+                    category:
+                      hookResult.data.category === PluginHookCategory.Decision
+                        ? HookCategory.DECISION
+                        : HookCategory.LIFECYCLE,
+                    mode:
+                      hookResult.data.mode === PluginHookMode.Command
+                        ? HookMode.COMMAND
+                        : HookMode.QUERY,
+                  },
+                ];
+              });
+            } catch {
+              return [];
+            }
+          })(),
           dependencies: dependenciesData,
         },
+        /* Need Revieew Area End */
       });
     },
 
@@ -506,7 +555,16 @@ export function createGrpcServer(): Server {
     },
 
     storePluginDefinition: async (call, callback) => {
-      const { methodInfo, defaultStore, sourceType } = call.request;
+      const request =
+        call.request as MahjongCodeStorageV1.StorePluginDefinitionRequest & {
+          hooks?: Array<{
+            type: string;
+            category: HookCategory;
+            mode: HookMode;
+          }>;
+        };
+      const { methodInfo, defaultStore, sourceType } = request;
+      const hooks = request.hooks ?? [];
 
       if (!methodInfo) {
         return callback(
@@ -554,16 +612,20 @@ export function createGrpcServer(): Server {
           ? defaultStore
           : JSON.stringify(defaultStore ?? {});
 
+      const hooksText = JSON.stringify(hooks ?? []);
+
       await db
         .insert(pluginDefinitions)
         .values({
           versionId: versionData.id,
           defaultStore: defaultStoreText,
+          hooks: hooksText,
         })
         .onConflictDoUpdate({
           target: pluginDefinitions.versionId,
           set: {
             defaultStore: defaultStoreText,
+            hooks: hooksText,
             updatedAt: new Date(),
           },
         })

@@ -8,6 +8,10 @@ import {
   type MahjongTile,
   encodeToBytes,
   GameMessageEnum,
+  type MethodInfo,
+  type PluginInstance,
+  type PluginHookDefinition,
+  ResourceSource,
 } from 'utils';
 import {
   PluginManager,
@@ -179,6 +183,41 @@ export class Game {
     return this.pluginManager.addPlugin(plugin as any, priority);
   }
 
+  public async addPluginByMethodInfo(
+    methodInfo: MethodInfo,
+    priority = 0,
+    resourceSource?: ResourceSource,
+  ) {
+    // Fetch plugin definition from storage
+    const definition = await this.storageGateway.getPluginDefinition({
+      methodInfo,
+      resourceSource: resourceSource || ResourceSource.USER,
+    });
+
+    // Assemble minimal PluginInstance with dynamic hook loading
+    // implementation is left empty because PluginManager.runHook()
+    // will dynamically load from runner on first execution
+    const pluginInstance: PluginInstance<unknown> = {
+      manifest: {
+        id: `${methodInfo.name}@${methodInfo.version}`,
+        name: methodInfo.name,
+        version: `${methodInfo.version}`,
+        methodInfo,
+        resourceSource: resourceSource || ResourceSource.USER,
+      },
+      defaultStore: definition.defaultStore,
+      runtime: { ttlMs: 60000 },
+      implementation: {
+        // lifecycle and decision hooks will be loaded dynamically from runner
+      },
+      usedGlobalStorageKeys: [],
+      globalStorageDefaultValues: {},
+      hooks: definition.hooks as PluginHookDefinition[],
+    };
+
+    return this.pluginManager.addPlugin(pluginInstance, priority);
+  }
+
   public async removePlugin(pluginId: string) {
     return this.pluginManager.removePlugin(pluginId);
   }
@@ -314,6 +353,11 @@ export class Game {
   public processedReceivedRoomAction(event: Event, payload: any): void {
     switch (event) {
       case Event.GAME_START: {
+        this.createNewRound({
+          resetPlayers: true,
+          resetTable: true,
+          preserveScores: false,
+        });
         this.currentRound.next({
           requestId: (this.currentRound as any).currentRequestId,
         });
@@ -323,8 +367,10 @@ export class Game {
         if (
           this.currentRound.getStatus() !== MahjongGameRoundStatus.RoundStart
         ) {
-          console.warn('Player joined after round started, ignoring:', payload);
-          break;
+          throw new Error(
+            'Player joined after round started, which is not allowed. Current status: ' +
+              this.currentRound.getStatus(),
+          );
         }
         this.table.addPlayer(payload.playerId);
         break;
@@ -333,8 +379,10 @@ export class Game {
         if (
           this.currentRound.getStatus() !== MahjongGameRoundStatus.RoundStart
         ) {
-          console.warn('Player left after round started, ignoring:', payload);
-          break;
+          throw new Error(
+            'Player left after round started, which is not allowed. Current status: ' +
+              this.currentRound.getStatus(),
+          );
         }
         this.table.removePlayer(payload.playerId);
         break;

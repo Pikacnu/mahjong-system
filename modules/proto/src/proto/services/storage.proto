@@ -57,9 +57,26 @@ message GetPluginDefinitionResponse {
   }
 }
 
+enum HookCategory {
+  LIFECYCLE = 0;
+  DECISION = 1;
+}
+
+enum HookMode {
+  QUERY = 0;
+  COMMAND = 1;
+}
+
+message PluginHookDefinition {
+  string type = 1;        // e.g. "onInit", "onGameStart", "onEvaluateAvailableActions"
+  HookCategory category = 2;
+  HookMode mode = 3;
+}
+
 message PluginDefinition {
   google.protobuf.Struct default_store = 1;
   repeated MethodInfo dependencies = 2;
+  repeated PluginHookDefinition hooks = 3;
 }
 
 message GetCodeVersionRequest {
@@ -117,6 +134,7 @@ message StorePluginDefinitionRequest {
   MethodInfo method_info = 1;
   optional google.protobuf.Struct default_store = 2;
   ResourceSource source_type = 3;
+  repeated PluginHookDefinition hooks = 4;
 }
 
 message StorePluginDefinitionResponse {

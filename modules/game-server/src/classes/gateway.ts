@@ -29,5 +29,10 @@ export type StorageGateway = {
   }): Promise<{
     defaultStore: unknown;
     dependencies: MethodInfo[];
+    hooks: Array<{
+      type: string;
+      category: 'lifecycle' | 'decision';
+      mode: 'query' | 'command';
+    }>;
   }>;
 };

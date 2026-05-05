@@ -8,6 +8,13 @@
       "when": 1777605620585,
       "tag": "0000_productive_overlord",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777605620586,
+      "tag": "0001_add_hooks_to_plugin_definitions",
+      "breakpoints": true
     }
   ]
 }
