@@ -62,20 +62,20 @@ export const player = schema.table('player', {
 
 export const gameRoomBinding = schema.table('game_room_binding', {
   id: serial().primaryKey().unique(),
-  gameId: serial()
+  gameId: integer()
     .notNull()
     .references(() => game.id),
-  roomId: serial()
+  roomId: integer()
     .notNull()
     .references(() => room.id),
 });
 
 export const roomPlayerBinding = schema.table('room_player_binding', {
   id: serial().primaryKey().unique(),
-  roomId: serial()
+  roomId: integer()
     .notNull()
     .references(() => room.id),
-  playerId: serial()
+  playerId: integer()
     .notNull()
     .references(() => player.id),
 });
