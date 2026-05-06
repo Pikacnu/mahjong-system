@@ -79,7 +79,14 @@ export const POST = async (request: Request) => {
     } catch (e) {
       const msg = String(e ?? '');
       if (!msg.includes('already exists')) {
-        throw e;
+        console.error('Failed to store code resource:', e);
+        return Response.json(
+          {
+            message: 'Failed to store code resource',
+            error: msg,
+          },
+          { status: 500 },
+        );
       }
       // ignore already-exists errors for demo smoke tests
     }
