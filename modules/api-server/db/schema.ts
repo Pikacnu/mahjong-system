@@ -10,19 +10,19 @@ import {
 
 export const schema = pgSchema('api-server');
 
-export const logStatusEnum = pgEnum('log_status', [
+export const logStatusEnum = schema.enum('log_status', [
   'pending',
   'processed',
   'failed',
 ]);
 
-export const gameStatusEnum = pgEnum('game_status', [
+export const gameStatusEnum = schema.enum('game_status', [
   'waiting',
   'playing',
   'finished',
 ]);
 
-export const roomStatusEnum = pgEnum('room_status', [
+export const roomStatusEnum = schema.enum('room_status', [
   'waiting',
   'playing',
   'finished',

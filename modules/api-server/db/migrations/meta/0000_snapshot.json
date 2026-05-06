@@ -1,5 +1,5 @@
 {
-  "id": "19669661-0af1-49df-a2a6-8ce782fbb258",
+  "id": "08027245-da2e-4d41-8fd3-c5fb1721154d",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -70,7 +70,7 @@
         "status": {
           "name": "status",
           "type": "log_status",
-          "typeSchema": "public",
+          "typeSchema": "api-server",
           "primaryKey": false,
           "notNull": true,
           "default": "'pending'"
@@ -185,7 +185,7 @@
         "status": {
           "name": "status",
           "type": "game_status",
-          "typeSchema": "public",
+          "typeSchema": "api-server",
           "primaryKey": false,
           "notNull": true,
           "default": "'waiting'"
@@ -253,7 +253,7 @@
         "status": {
           "name": "status",
           "type": "room_status",
-          "typeSchema": "public",
+          "typeSchema": "api-server",
           "primaryKey": false,
           "notNull": true,
           "default": "'waiting'"
@@ -359,27 +359,27 @@
     }
   },
   "enums": {
-    "public.game_status": {
+    "api-server.game_status": {
       "name": "game_status",
-      "schema": "public",
+      "schema": "api-server",
       "values": [
         "waiting",
         "playing",
         "finished"
       ]
     },
-    "public.log_status": {
+    "api-server.log_status": {
       "name": "log_status",
-      "schema": "public",
+      "schema": "api-server",
       "values": [
         "pending",
         "processed",
         "failed"
       ]
     },
-    "public.room_status": {
+    "api-server.room_status": {
       "name": "room_status",
-      "schema": "public",
+      "schema": "api-server",
       "values": [
         "waiting",
         "playing",
