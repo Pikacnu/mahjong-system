@@ -56,22 +56,31 @@ export const POST = async (request: Request) => {
 
   const { status } = validation.data;
 
-  const now = Date.now();
-  const createdRoom = await db
-    .insert(room)
-    .values({
-      status,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning({
-      gameId: room.id,
-      status: room.status,
-      createdAt: room.createdAt,
-      updatedAt: room.updatedAt,
-    });
-
-  return Response.json(createdRoom[0], { status: 200 });
+  try {
+    const createdRoom = await db
+      .insert(room)
+      .values({
+        status,
+      })
+      .returning({
+        gameId: room.id,
+        status: room.status,
+        createdAt: room.createdAt,
+        updatedAt: room.updatedAt,
+      });
+    return Response.json(createdRoom[0], { status: 200 });
+  } catch (e) {
+    console.error('Error creating room:', e);
+    return Response.json(
+      {
+        message: 'Failed to create room',
+      },
+      {
+        status: 500,
+        statusText: 'Internal Server Error',
+      },
+    );
+  }
 };
 
 export const gameManagerHandler = { GET, POST };

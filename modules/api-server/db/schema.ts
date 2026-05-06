@@ -5,6 +5,7 @@ import {
   jsonb,
   pgEnum,
   serial,
+  date,
 } from 'drizzle-orm/pg-core';
 
 export const schema = pgSchema('api-server');
@@ -43,15 +44,15 @@ export const gameSnapshots = schema.table('game_snapshots', {
 
 export const game = schema.table('game', {
   id: serial().primaryKey().unique(),
-  createdAt: integer().notNull(),
-  updatedAt: integer().notNull(),
+  createdAt: date().notNull().defaultNow(),
+  updatedAt: date().notNull().defaultNow(),
 });
 
 export const room = schema.table('room', {
   id: serial().primaryKey().unique(),
   status: roomStatusEnum().notNull().default('waiting'),
-  createdAt: integer().notNull(),
-  updatedAt: integer().notNull(),
+  createdAt: date().notNull().defaultNow(),
+  updatedAt: date().notNull().defaultNow(),
 });
 
 export const player = schema.table('player', {

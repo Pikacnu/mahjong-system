@@ -1,12 +1,12 @@
-CREATE SCHEMA IF NOT EXISTS "api-server";
+CREATE SCHEMA "api-server";
 --> statement-breakpoint
 CREATE TYPE "public"."game_status" AS ENUM('waiting', 'playing', 'finished');--> statement-breakpoint
 CREATE TYPE "public"."log_status" AS ENUM('pending', 'processed', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."room_status" AS ENUM('waiting', 'playing', 'finished');--> statement-breakpoint
 CREATE TABLE "api-server"."game" (
 	"id" serial PRIMARY KEY NOT NULL,
-	"createdAt" integer NOT NULL,
-	"updatedAt" integer NOT NULL,
+	"createdAt" date DEFAULT now() NOT NULL,
+	"updatedAt" date DEFAULT now() NOT NULL,
 	CONSTRAINT "game_id_unique" UNIQUE("id")
 );
 --> statement-breakpoint
@@ -42,8 +42,8 @@ CREATE TABLE "api-server"."player" (
 CREATE TABLE "api-server"."room" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"status" "room_status" DEFAULT 'waiting' NOT NULL,
-	"createdAt" integer NOT NULL,
-	"updatedAt" integer NOT NULL,
+	"createdAt" date DEFAULT now() NOT NULL,
+	"updatedAt" date DEFAULT now() NOT NULL,
 	CONSTRAINT "room_id_unique" UNIQUE("id")
 );
 --> statement-breakpoint

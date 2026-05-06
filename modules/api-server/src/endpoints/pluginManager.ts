@@ -5,6 +5,7 @@ import {
   storePluginDefinitionSchema,
   handleValidationError,
 } from '../utils/schemas';
+import { encodeToBytes } from 'utils';
 
 async function readMethodInfo(req: Request) {
   const url = new URL(req.url);
@@ -135,12 +136,10 @@ const POST = async (req: Request) => {
         methodInfo,
         ...(defaultStore
           ? {
-              defaultStore: new TextEncoder().encode(
-                JSON.stringify(defaultStore),
-              ) as Buffer,
+              defaultStore: encodeToBytes(defaultStore),
             }
           : {}),
-        sourceType: 1,
+        sourceType: MahjongCodeStorageV1.ResourceSource.USER,
       } as MahjongCodeStorageV1.StorePluginDefinitionRequest,
     );
     console.log('storePluginCodeRespose : ', storePluginCodeRespose);

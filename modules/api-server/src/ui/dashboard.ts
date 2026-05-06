@@ -20,18 +20,19 @@ const dashboardCategories: DashboardCategory[] = [
       'This dashboard keeps the main operations small and readable. Full API descriptions live on the docs page.',
   },
   {
+    key: 'runner',
+    title: 'Register Method and Test Code',
+    summary:
+      'Smoke test function-runner with a temporary endpoint. And Store plugin definitions with the plugin manager.',
+    detail:
+      'The temp runner route stores optional code first, then calls function-storage to store Metod Info and dependencies, then calls function-runner to execute. The plugin manager POST route also stores MethodInfo and dependencies but is meant for real plugin definitions that can be called later by game logic.',
+  },
+  {
     key: 'plugin',
     title: 'Plugin Definition',
     summary: 'Teach the runtime shape of a plugin.',
     detail:
-      'Register the plugin definition first. Uploading executable code and the larger API surface are documented separately.',
-  },
-  {
-    key: 'runner',
-    title: 'Temp Runner',
-    summary: 'Smoke test function-runner with a temporary endpoint.',
-    detail:
-      'The temp runner route stores optional code first, then calls function-runner. It is practical for quick checks, not the final runtime contract.',
+      'Register plugin needs Method existence in storage, so it is a good first step to teach the system about a plugin. Uploading plugin resource is a separate step that can be done later when you have the executable source ready.',
   },
   {
     key: 'notes',
@@ -140,7 +141,7 @@ function renderBasicCallPanel() {
         <div class="split-grid">
           <label>
             Function name
-            <input id="runner-name" placeholder="demo-entry" />
+            <input id="runner-name" placeholder="mahjong-core" />
           </label>
           <label>
             Version
@@ -723,7 +724,7 @@ export function renderDashboardPage() {
     const fillRunnerBtn = document.querySelector('[data-fill-runner]');
     if (fillRunnerBtn) {
       fillRunnerBtn.addEventListener('click', () => {
-        setValue('runner-name', 'demo-entry');
+        setValue('runner-name', 'mahjong-core');
         setValue('runner-version', '1');
         setValue('runner-this', JSON.stringify({ seed: 1 }));
         setValue('runner-args', JSON.stringify([{ message: 'hello' }]));
