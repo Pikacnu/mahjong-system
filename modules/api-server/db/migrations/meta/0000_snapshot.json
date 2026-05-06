@@ -1,5 +1,5 @@
 {
-  "id": "08027245-da2e-4d41-8fd3-c5fb1721154d",
+  "id": "c5fade27-4556-4c8a-a4b5-33918cd12589",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -104,13 +104,13 @@
         },
         "gameId": {
           "name": "gameId",
-          "type": "serial",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
         "roomId": {
           "name": "roomId",
-          "type": "serial",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         }
@@ -301,13 +301,13 @@
         },
         "roomId": {
           "name": "roomId",
-          "type": "serial",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
         "playerId": {
           "name": "playerId",
-          "type": "serial",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         }
