@@ -3,25 +3,25 @@ import {
   integer,
   text,
   jsonb,
-  pgEnum,
   serial,
+  timestamp,
 } from 'drizzle-orm/pg-core';
 
 export const schema = pgSchema('api-server');
 
-export const logStatusEnum = pgEnum('log_status', [
+export const logStatusEnum = schema.enum('log_status', [
   'pending',
   'processed',
   'failed',
 ]);
 
-export const gameStatusEnum = pgEnum('game_status', [
+export const gameStatusEnum = schema.enum('game_status', [
   'waiting',
   'playing',
   'finished',
 ]);
 
-export const roomStatusEnum = pgEnum('room_status', [
+export const roomStatusEnum = schema.enum('room_status', [
   'waiting',
   'playing',
   'finished',
@@ -43,15 +43,15 @@ export const gameSnapshots = schema.table('game_snapshots', {
 
 export const game = schema.table('game', {
   id: serial().primaryKey().unique(),
-  createdAt: integer().notNull(),
-  updatedAt: integer().notNull(),
+  createdAt: timestamp().notNull(),
+  updatedAt: timestamp().notNull(),
 });
 
 export const room = schema.table('room', {
   id: serial().primaryKey().unique(),
   status: roomStatusEnum().notNull().default('waiting'),
-  createdAt: integer().notNull(),
-  updatedAt: integer().notNull(),
+  createdAt: timestamp().notNull(),
+  updatedAt: timestamp().notNull(),
 });
 
 export const player = schema.table('player', {
@@ -61,20 +61,20 @@ export const player = schema.table('player', {
 
 export const gameRoomBinding = schema.table('game_room_binding', {
   id: serial().primaryKey().unique(),
-  gameId: serial()
+  gameId: integer()
     .notNull()
     .references(() => game.id),
-  roomId: serial()
+  roomId: integer()
     .notNull()
     .references(() => room.id),
 });
 
 export const roomPlayerBinding = schema.table('room_player_binding', {
   id: serial().primaryKey().unique(),
-  roomId: serial()
+  roomId: integer()
     .notNull()
     .references(() => room.id),
-  playerId: serial()
+  playerId: integer()
     .notNull()
     .references(() => player.id),
 });

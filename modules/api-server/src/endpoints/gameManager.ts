@@ -24,25 +24,37 @@ export const GET = async (request: Request) => {
 
   const { gameId } = validation.data;
 
-  const roomData = await db
-    .select()
-    .from(room)
-    .where(eq(room.id, gameId))
-    .limit(1);
+  try {
+    const roomData = await db
+      .select()
+      .from(room)
+      .where(eq(room.id, gameId))
+      .limit(1);
 
-  if (!roomData.length) {
-    return Response.json({ message: 'Room not found' }, { status: 404 });
+    if (!roomData.length) {
+      return Response.json({ message: 'Room not found' }, { status: 404 });
+    }
+
+    return Response.json(
+      {
+        gameId: roomData[0]!.id,
+        status: roomData[0]!.status,
+        createdAt: roomData[0]!.createdAt,
+        updatedAt: roomData[0]!.updatedAt,
+      },
+      { status: 200 },
+    );
+  } catch (e) {
+    console.error(e);
+    return Response.json(
+      {
+        message: 'Error fetching game information',
+      },
+      {
+        status: 500,
+      },
+    );
   }
-
-  return Response.json(
-    {
-      gameId: roomData[0]!.id,
-      status: roomData[0]!.status,
-      createdAt: roomData[0]!.createdAt,
-      updatedAt: roomData[0]!.updatedAt,
-    },
-    { status: 200 },
-  );
 };
 
 export const POST = async (request: Request) => {
@@ -56,8 +68,6 @@ export const POST = async (request: Request) => {
   }
 
   const { status } = validation.data;
-
-  const now = Date.now();
 
   // check is room exists
 
@@ -85,7 +95,7 @@ export const POST = async (request: Request) => {
         case 'waiting': {
           await db
             .update(room)
-            .set({ status: 'waiting', updatedAt: new Date(now).getTime() })
+            .set({ status: 'waiting', updatedAt: new Date() })
             .where(eq(room.id, currentSearchingRoomData.id));
           return Response.json(
             {
@@ -135,7 +145,7 @@ export const POST = async (request: Request) => {
           // }
           await db
             .update(room)
-            .set({ status: 'playing', updatedAt: new Date(now).getTime() })
+            .set({ status: 'playing', updatedAt: new Date() })
             .where(eq(room.id, currentSearchingRoomData.id));
           return Response.json(
             {
