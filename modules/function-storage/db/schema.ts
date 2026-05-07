@@ -9,6 +9,7 @@ import {
   uniqueIndex,
   bigint,
   boolean,
+  jsonb,
 } from 'drizzle-orm/pg-core';
 
 export const schema = pgSchema('function_storage');
@@ -36,6 +37,7 @@ export const method = schema.table('method', {
   name: text('name').notNull().unique(),
   sourceType: sourceType('source_type').notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  createAt: timestamp('create_at').defaultNow().notNull(),
 });
 
 export const versions = schema.table(
@@ -98,10 +100,8 @@ export const pluginDefinitions = schema.table(
     versionId: integer('version_id')
       .notNull()
       .references(() => versions.id),
-    // Can Change to jsonb in pg
-    defaultStore: text('default_store').notNull().default('{}'),
-    // Can Change to Array in pg
-    hooks: text('hooks').notNull().default('[]'),
+    defaultStore: jsonb('default_store').notNull().default('{}'),
+    hooks: text('hooks').notNull().array(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
