@@ -1,5 +1,5 @@
 {
-  "id": "c137d830-2ea0-4585-9f8b-bda953090b5c",
+  "id": "a5d205c4-6892-4a02-a8d1-598951a5adac",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -167,6 +167,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "create_at": {
+          "name": "create_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -214,10 +221,16 @@
         },
         "default_store": {
           "name": "default_store",
-          "type": "text",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": true,
           "default": "'{}'"
+        },
+        "hooks": {
+          "name": "hooks",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",

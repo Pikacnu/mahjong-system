@@ -13,13 +13,15 @@ CREATE TABLE "function_storage"."method" (
 	"name" text NOT NULL,
 	"source_type" "function_storage"."sourceType" NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"create_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "method_name_unique" UNIQUE("name")
 );
 --> statement-breakpoint
 CREATE TABLE "function_storage"."plugin_definitions" (
 	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "function_storage"."plugin_definitions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"version_id" integer NOT NULL,
-	"default_store" text DEFAULT '{}' NOT NULL,
+	"default_store" jsonb DEFAULT '{}' NOT NULL,
+	"hooks" text[],
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
