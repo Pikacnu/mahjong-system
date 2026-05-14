@@ -226,19 +226,12 @@ export function createGrpcServer(): Server {
           /*
             Need Review
           */
-          defaultStore: (() => {
-            try {
-              const parsed = JSON.parse(definition.defaultStore) as unknown;
-              return parsed && typeof parsed === 'object'
-                ? (parsed as Record<string, unknown>)
-                : {};
-            } catch {
-              return {};
-            }
-          })(),
+          defaultStore: definition.defaultStore as { [key: string]: unknown },
           hooks: (() => {
             try {
-              const parsed = JSON.parse(definition.hooks) as unknown;
+              const parsed = (definition.hooks || []).map((hook) =>
+                JSON.parse(hook),
+              );
               if (!Array.isArray(parsed)) {
                 return [];
               }
@@ -612,20 +605,18 @@ export function createGrpcServer(): Server {
           ? defaultStore
           : JSON.stringify(defaultStore ?? {});
 
-      const hooksText = JSON.stringify(hooks ?? []);
-
       await db
         .insert(pluginDefinitions)
         .values({
           versionId: versionData.id,
           defaultStore: defaultStoreText,
-          hooks: hooksText,
+          hooks: hooks.map((hook) => JSON.stringify(hook)),
         })
         .onConflictDoUpdate({
           target: pluginDefinitions.versionId,
           set: {
             defaultStore: defaultStoreText,
-            hooks: hooksText,
+            hooks: hooks.map((hook) => JSON.stringify(hook)),
             updatedAt: new Date(),
           },
         })
