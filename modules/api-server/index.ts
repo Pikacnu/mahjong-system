@@ -5,8 +5,6 @@ import { pluginResourceHandler } from './src/endpoints/pluginResource';
 import { roomManagerHandler } from '@/endpoints/roomManager';
 import { playerManagerHandler } from '@/endpoints/playerManager';
 import { runMigrate } from './db/migrater';
-import { renderDashboardPage } from './src/ui/dashboard';
-import { renderApiDocsPage } from './src/ui/docs';
 
 await runMigrate();
 
@@ -21,20 +19,6 @@ export const apiHandler = createWebHandler({
   fetch(req, server) {
     const pathname = new URL(req.url).pathname;
     const searchParams = new URL(req.url).searchParams;
-
-    if (pathname === '/' || pathname === '/index.html') {
-      return new Response(renderDashboardPage(), {
-        status: 200,
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
-      });
-    }
-
-    if (pathname === '/docs' || pathname === '/api-docs') {
-      return new Response(renderApiDocsPage(), {
-        status: 200,
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
-      });
-    }
 
     if (pathname === '/health') {
       return Response.json({ status: 'ok' }, { status: 200 });

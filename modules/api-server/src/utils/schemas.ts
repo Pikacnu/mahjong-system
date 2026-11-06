@@ -34,18 +34,6 @@ export const pluginResourceGetSchema = z.object({
   resourceType: z.number().int().min(0).max(1, 'Invalid resource type'),
 });
 
-// ===== runner.ts schemas =====
-export const runnerPayloadSchema = z.object({
-  methodInfo: methodInfoSchema.optional(),
-  code: z.string().optional(),
-  payload: z
-    .object({
-      thisValue: z.unknown().optional(),
-      args: z.array(z.unknown()).optional(),
-    })
-    .optional(),
-  dependencies: z.array(dependencySchema).optional().default([]),
-});
 
 // ===== playerManager.ts schemas =====
 export const createPlayerSchema = z.object({

@@ -1,6 +1,6 @@
 import { credentials } from '@grpc/grpc-js';
 import { MahjongRoomV1 } from 'proto';
-import { GAME_SERVER_HOSTNAME, GRPC_PORT, PLUGIN_RUNNER_HOSTNAME } from 'utils';
+import { GAME_SERVER_HOSTNAME, GRPC_PORT } from 'utils';
 
 function createGameClient(address: string): MahjongRoomV1.RoomServicesClient {
   return new MahjongRoomV1.RoomServicesClient(
