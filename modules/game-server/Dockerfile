@@ -16,5 +16,5 @@ FROM oven/bun
 WORKDIR /app
 COPY --from=builder /app/modules/game-server/game-server .
 RUN chmod +x game-server || true
-EXPOSE 3000
+EXPOSE 4001
 CMD ["./game-server"]

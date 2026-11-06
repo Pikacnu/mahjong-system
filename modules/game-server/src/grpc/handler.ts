@@ -222,7 +222,16 @@ export function createGrpcServer(manager: GameInstanceManager): Server {
         });
       }
     },
-    listRoomPlugins: async (call, callback) => {},
+    listRoomPlugins: async (call, callback) => {
+      callback(null, {
+        success: false,
+        pluginInfos: [],
+        error: {
+          code: ErrorCode.INTERNAL_ERROR,
+          message: 'Plugin management is not implemented yet',
+        },
+      });
+    },
   } as MahjongRoomV1.RoomServicesServer);
   return server;
 }

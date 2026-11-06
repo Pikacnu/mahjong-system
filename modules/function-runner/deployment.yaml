@@ -1,3 +1,7 @@
+# Standalone manifest for function-runner. Temporary: function-runner is being removed
+# (see modules/utils/docs/plugin-runtime-design.md). Matches the current code:
+# - the gRPC server binds PORT, and game-server dials PLUGIN_RUNNER_HOSTNAME:GRPC_PORT (4001)
+# - there is no HTTP server, so probes are TCP probes on the gRPC port
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -21,10 +25,16 @@ spec:
           image: function-runner:latest
           imagePullPolicy: Always
           ports:
-            - name: http
-              containerPort: 3000
+            - name: grpc
+              containerPort: 4001
               protocol: TCP
           env:
+            - name: PORT
+              value: "4001"
+            - name: GRPC_PORT
+              value: "4001"
+            - name: STORAGE_HOSTNAME
+              value: "function-storage"
             - name: WORKER_MEMORY_LIMIT
               value: "25165824" # 24MB
             - name: TASK_TIMEOUT_MS
@@ -39,13 +49,6 @@ spec:
               value: "1"
             - name: MAX_TASKS_PER_WORKER
               value: "1"
-            - name: FUNCTION_STORAGE_URL
-              value: "http://function-storage:4001"
-            - name: API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: function-runner-secrets
-                  key: api-key
           resources:
             requests:
               cpu: 250m
@@ -54,17 +57,15 @@ spec:
               cpu: 750m
               memory: 512Mi
           livenessProbe:
-            httpGet:
-              path: /health
-              port: http
+            tcpSocket:
+              port: grpc
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
-            httpGet:
-              path: /ready
-              port: http
+            tcpSocket:
+              port: grpc
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3
@@ -106,9 +107,9 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - name: http
-      port: 3000
-      targetPort: http
+    - name: grpc
+      port: 4001
+      targetPort: grpc
       protocol: TCP
   selector:
     app: function-runner

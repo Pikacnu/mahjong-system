@@ -3,6 +3,7 @@ import { WorkerManager } from './src/manager/workerManager';
 import {
   MAX_TASKS_PER_WORKER,
   MAX_WORKERS,
+  MIN_WORKERS,
   TASK_TIMEOUT_MS,
 } from './src/utils/config';
 import { CodeCacher } from './src/utils/cacher';
@@ -11,7 +12,7 @@ import { createFunctionRunnerGRPCHandler } from './src/grpc/handler';
 
 const normalRunnerManager = new WorkerManager({
   MaxWorkers: MAX_WORKERS,
-  MinWorkers: MAX_WORKERS,
+  MinWorkers: MIN_WORKERS,
   MaxTasksPerWorker: MAX_TASKS_PER_WORKER,
   TaskTimeoutMs: TASK_TIMEOUT_MS,
 });

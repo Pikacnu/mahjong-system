@@ -8,7 +8,7 @@ import { encodeToBytes } from 'utils/src/utils';
 
 export async function createRunnerServices(address: string) {
   const runnerServicesClient = new MahjongRunnerV1.RunnerServiceClient(
-    `localhost:${process.env.GRPC_PORT}`,
+    address,
     credentials.createInsecure(),
   );
   return runnerServicesClient;

@@ -15,8 +15,5 @@ export const MAX_TASKS_PER_WORKER: number =
 
 export const API_KEY: string = process.env.API_KEY || '';
 
-export const FUNCTION_STORAGE_URL: string =
-  process.env.FUNCTION_STORAGE_URL || 'http://localhost:4001';
-
 export const RELOAD_BUILTIN_INTERVAL: number =
   parseInt(process.env.RELOAD_BUILTIN_INTERVAL || '') || 5 * 60 * 1000;
