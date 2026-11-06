@@ -64,7 +64,6 @@ services:
     port: 4001
     env:
       API_KEY: "dev-runner-key"
-      FUNCTION_STORAGE_URL: "http://mahjong-system-mahjong-system-function-storage:4001"
       WORKER_MEMORY_LIMIT: "25165824"
       TASK_TIMEOUT_MS: "5000"
       VM_MAX_STACK_SIZE: "1048576"

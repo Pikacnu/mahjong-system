@@ -1,60 +1,41 @@
-Mahjong System Helm chart
+# Mahjong System Helm chart
 
-This helm chart deploys core services used by the mahjong-system project:
+Deploys the mahjong-system services and a PostgreSQL instance.
 
-- function-storage
-- function-runner
-- game-runner (maps to modules/game-server)
-- api-server
-- PostgreSQL database
+| Service | Chart key | Source module | Ports (dev values) |
+| :--- | :--- | :--- | :--- |
+| api-server | `api-server` | `modules/api-server` | HTTP 3000, NodePort 30000 |
+| lobby-server | `lobby-server` | `modules/lobby-server` | HTTP 3001 |
+| game-server | `game-runner` | `modules/game-server` | gRPC 4001 (`grpcPort`) |
+| function-storage | `function-storage` | `modules/function-storage` | gRPC 4001 (`port`) |
+| function-runner | `function-runner` | `modules/function-runner` | gRPC 4001 (`port`) |
+| PostgreSQL 18 | `postgresql` | — | 5432 |
 
-Quickstart:
 
-1. Edit images/credentials in `values.yaml`.
-2. Install with Helm:
+## Quick start (local kind cluster)
 
-```bash
-helm install mahjong ./helm/mahjong-system
-```
-
-3. Upgrade after changes:
+From the repository root:
 
 ```bash
-helm upgrade mahjong ./helm/mahjong-system -f values.yaml
+bun run cluster:create                  # kind cluster "mahjong-system" with NodePorts 30000 and 30001
+
+# Build and load local images (tags must match values-dev.yaml: local/mahjong-<module>:dev)
+docker build -f modules/api-server/Dockerfile -t local/mahjong-api-server:dev .
+docker build -f modules/lobby-server/Dockerfile -t local/mahjong-lobby-server:dev .
+docker build -f modules/game-server/Dockerfile -t local/mahjong-game-server:dev .
+docker build -f modules/function-storage/dockerfile -t local/mahjong-function-storage:dev .
+docker build -f modules/function-runner/dockerfile -t local/mahjong-function-runner:dev .
+for img in api-server lobby-server game-server function-storage function-runner; do
+  kind load docker-image local/mahjong-$img:dev --name mahjong-system
+done
+
+helm install mahjong ./helm/mahjong-system -f helm/mahjong-system/values-dev.yaml
 ```
 
-If you want me to wire real image names (from your CI registry) or add Ingress, tell me the image repository names and any required env variables.
-
-## Initializing PostgreSQL with scripts
-
-You can provide initialization scripts that will be mounted into the PostgreSQL container at `/docker-entrypoint-initdb.d` by setting `postgresql.initdbScripts` in `values.yaml`.
-
-Example in `values.yaml`:
-
-```yaml
-postgresql:
-  initdbScripts:
-    01-init-schema.sql: |-
-      -- SQL initialization example (executed by POSTGRES_USER)
-      CREATE USER docker;
-      CREATE DATABASE docker;
-      GRANT ALL PRIVILEGES ON DATABASE docker TO docker;
-```
-
-Notes and alternatives:
-
-- ConfigMap mount (implemented): mounts your scripts into `/docker-entrypoint-initdb.d` so the official Postgres entrypoint will execute them on first initialization (when data dir is empty).
-- If your PV already contains an initialized database, these scripts will NOT run. To handle existing PVs consider:
-  - Running a one-off `Job` or `kubectl exec`/`psql` to apply migrations.
-  - Using an `initContainer` or separate `Job` to copy a preseeded data file into the PVC before Postgres starts.
-  - Building a custom Postgres image that embeds the initialization scripts.
-
-Commands:
-
-Create a local kind cluster (uses scripts in root `package.json`):
+Upgrade after changes:
 
 ```bash
-bun run cluster:create
+helm upgrade mahjong ./helm/mahjong-system -f helm/mahjong-system/values-dev.yaml
 ```
 
 Delete the cluster:
@@ -63,10 +44,39 @@ Delete the cluster:
 bun run cluster:delete
 ```
 
-Install the chart:
+## Values
 
-```bash
-bun install mahjong ./helm/mahjong-system -f helm/mahjong-system/values.yaml
+- `values.yaml`: production-style defaults. Images point to `pikacnu/<name>:latest` on Docker Hub. Set your own repositories and credentials before installing.
+- `values-dev.yaml`: local kind setup. Uses `local/mahjong-*:dev` images, NodePort services, per-service env (`BIND_HOST`, `PORT`, runner limits), PostgreSQL init scripts, and enables `lobby-server`.
+
+The CI workflow publishes images to `ghcr.io/<owner>/mahjong-<module>`. Point the `image.repository` values at those names when deploying from CI.
+
+### Ports
+
+The chart sets `PORT` to the service's `port` (unless `env` overrides it) and `GRPC_PORT` to `grpcPort` (default `4001`). Clients dial `<service>:GRPC_PORT`, so each gRPC service must listen on the port its callers use:
+
+- `game-runner` (game-server) binds `GRPC_PORT`, so set `grpcPort: 4001`.
+- `function-storage` and `function-runner` bind `PORT`, so set `port: 4001`.
+
+Both `values.yaml` and `values-dev.yaml` follow these rules.
+
+### Migrations
+
+`function-storage` and `api-server` run their Drizzle migrations at startup, so the migration Job (`migrations.enabled`) is off by default in both files. Enable it only if you want a separate migration step, and set `migrations.command` to something that exists in the image.
+
+## Initializing PostgreSQL with scripts
+
+Scripts in `postgresql.initdbScripts` are mounted into `/docker-entrypoint-initdb.d` and run by the official Postgres image. They only run when the data directory is empty, so they do not run against an existing PersistentVolume.
+
+```yaml
+postgresql:
+  initdbScripts:
+    01-init-schema.sql: |-
+      CREATE USER docker;
+      CREATE DATABASE docker;
+      GRANT ALL PRIVILEGES ON DATABASE docker TO docker;
 ```
 
-If you want, I can also add an example `Job` to apply scripts to an existing DB or provide an `initContainer` example to prepopulate the PVC—要哪個？
+For an existing database, run the SQL with `kubectl exec ... psql`, or use a one-off Job.
+
+The repository's `init.sql` creates the `code-storage`, `mahjong-base` and `mahjong-game` databases and users. `values-dev.yaml` includes equivalent scripts.

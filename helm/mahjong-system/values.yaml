@@ -7,21 +7,25 @@ services:
     image:
       repository: pikacnu/function-storage
       tag: latest
-    port: 3000
+    # gRPC server binds PORT; callers dial GRPC_PORT (4001)
+    port: 4001
     resources: {}
   function-runner:
     enabled: true
     image:
       repository: pikacnu/function-runner
       tag: latest
-    port: 8080
+    # gRPC server binds PORT; callers dial GRPC_PORT (4001)
+    port: 4001
     resources: {}
   game-runner:
     enabled: true
     image:
       repository: pikacnu/game-runner
       tag: latest
+    # HTTP port is unused; the gRPC server binds GRPC_PORT
     port: 3000
+    grpcPort: 4001
     resources: {}
   api-server:
     enabled: true
@@ -29,6 +33,13 @@ services:
       repository: pikacnu/api-server
       tag: latest
     port: 3000
+    resources: {}
+  lobby-server:
+    enabled: true
+    image:
+      repository: pikacnu/lobby-server
+      tag: latest
+    port: 3001
     resources: {}
 
 postgresql:
@@ -54,6 +65,17 @@ postgresql:
   persistence:
     enabled: true
     size: 1Gi
+
+# Migrations run at startup in function-storage and api-server, so this Job is off by default.
+migrations:
+  enabled: false
+  image:
+    repository: pikacnu/function-storage
+    tag: latest
+  command:
+    - "sh"
+    - "-c"
+    - "echo no migrations configured; exit 0"
 
 resources: {}
 nodeSelector: {}
