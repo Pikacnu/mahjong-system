@@ -12,6 +12,23 @@
 
 ---
 
+## 現況核對（2026-11-05）
+
+以下只記錄已在程式碼中確認的狀態，計畫內容本身未改寫。
+
+- **Phase 0**
+  - `modules/utils/src/response.ts` 已存在（`ApiResponse` / `ApiError` 與建立函式）。
+  - `common.proto` 已定義 `ApiError` 與 `ErrorCode`，各 gRPC Response 都以 `oneof error` 回傳錯誤。
+  - `serialization.ts` 尚未建立；`encodeToBytes` / `decodeFromBytes` 目前位於 `modules/utils/src/utils.ts`。
+  - api-server 的 REST 回傳格式尚未逐一確認是否全部使用 `ApiResponse`。
+- **Phase 1**
+  - api-server 建立房間時已呼叫 game-server 的 `CreateRoom`（`api-server/src/endpoints/roomManager.ts`）。
+  - lobby-server 目前以 HTTP 呼叫 `api-server` 的 `/api/game/management?gameId=` 驗證房間，不是 gRPC 詢問 game-server。
+  - `room.proto` 尚未定義 `GetGameState`。
+  - game-server 的 `ListRoomPlugins` 尚未實作（handler 不會回應）。
+- **Phase 3**
+  - `game_logs_queue`、`game_snapshots` 資料表已在 `api-server/db/schema.ts` 定義，但沒有任何程式讀寫，也沒有 `SaveGameLog` endpoint。
+
 ## 當前實作情況分析與痛點 (Current State & Issues)
 
 ### ✅ 已完成的部分 (Implemented)

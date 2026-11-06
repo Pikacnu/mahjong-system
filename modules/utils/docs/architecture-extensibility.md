@@ -4,6 +4,16 @@
 
 ## 1. 核心設計理念與最終決策 (Core Philosophy & Decision)
 
+> **實作狀態（2026-11-05）**：方案 A 的插件註冊、hook 呼叫與 `storagePatch` 已實作；前端 Data-Driven UI、事件總線與長駐 VM 尚未實作。下表對照目前程式碼：
+>
+> | 項目 | 狀態 | 位置 |
+> | :--- | :--- | :--- |
+> | Hook 清單（Manifest） | 已實作（`defaultStore` + `hooks` 陣列，存於 DB） | `utils/src/interfaces/plugin.ts`、`function-storage` `plugin_definitions` |
+> | 插件狀態（`customState`） | 已實作為 `PluginManager` 的 storage 與 `defaultStore`，名稱與下方草案不同 | `game-server/src/plugins/plugin-manager.ts` |
+> | Runner 本地快取 | 已實作（記憶體快取） | `function-runner/src/utils/cacher.ts` |
+> | 前端 UI 動作 JSON | 未實作（`ui_actions.ts` 尚未建立） | — |
+> | 被動事件總線（Redis/Kafka） | 未實作 | — |
+
 基於效能、開發體驗與系統穩定度的平衡，系統採取以下核心架構：
 
 1.  **前端 - 數據驅動 UI (Data-Driven UI)：**
@@ -59,6 +69,8 @@
 
 ### 3.1 Frontend (Data-Driven UI)
 
+> 規劃中。目前 repo 尚未有 `ui_actions.ts`，請參考 [`todo/docs/frontend-implementation-plan.md`](../../../todo/docs/frontend-implementation-plan.md)。
+
 前端的 Action 面板只認 JSON Schema，不寫死邏輯。
 
 ```json
@@ -82,19 +94,38 @@
 
 ### 3.3 Function-Runner (執行引擎)
 
-- **Local Code Cache (本地快取)**：目前的 `ModuleManager` 需要確保腳本拉取後緩存在記憶體中，只透過 `hash` 驗證版本，解決「載入與傳輸 (Fetch overhead)」問題。
-- **Hook Manifest**：
-  Runner 的入口點必須回報監聽清單，讓 Core 知道何時需要呼叫它：
-  ```javascript
-  export function init() {
-    return {
-      name: 'Super Power Mode',
-      listenHooks: ['onTileDrawn', 'onCalculateScore'], // 宣告註冊
-      initCustomState: { mp: 100, usedSkills: [] }, // 初始化自訂狀態
-    };
-  }
+> 更新（2026-11-06）：function-runner 移除。插件改在 game-server 的 game Worker 內以 QuickJS 執行（每局一個 runtime，每一局重建 context），插件狀態由主機管理；上傳時的檢查與建置併入 function-storage。詳見 [plugin-runtime-design.md](plugin-runtime-design.md)。以下為原本的說明。
+
+- **Local Code Cache (本地快取)**：`CodeCacher`（`function-runner/src/utils/cacher.ts`）已在記憶體中快取腳本，減少重複拉取。版本是否以 `hash` 驗證，仍需確認。
+- **Hook Manifest（實際格式）**：插件的 hook 清單不是 `init()` 的回傳值，而是 `PluginInstance` 的宣告欄位，並存入 `function-storage` 的 `plugin_definitions`：
+
+  ```typescript
+  // modules/plugins/src/system/furtin.ts（節錄）
+  export const FurtinPlugin: PluginInstance<FuritenStorage> = {
+    name: 'Furtin / Furiten rule',
+    version: '0.1.0',
+    defaultStore,                     // 初始 storage，存為 jsonb
+    usedGlobalStorageKeys: [],        // 會讀寫的全域 storage key
+    globalStorageDefaultValues: {},
+    implementation: {
+      decision: {
+        [DecisionHookType.EvaluateAvailableActions]: EvaluateAvailableActions,
+        [DecisionHookType.ValidateAction]: ValidateAction,
+        [DecisionHookType.ResolveAction]: ResolveAction,
+      },
+    },
+    hooks: [                          // 監聽清單，存為 text[]
+      { type: DecisionHookType.EvaluateAvailableActions, category: PluginHookCategory.Decision, mode: PluginHookMode.Query },
+      { type: DecisionHookType.ValidateAction, category: PluginHookCategory.Decision, mode: PluginHookMode.Command },
+      { type: DecisionHookType.ResolveAction, category: PluginHookCategory.Decision, mode: PluginHookMode.Command },
+    ],
+  };
   ```
 
+  game-server 只會呼叫 `hooks` 中宣告過的 hook，因此不需要對每個事件都發 gRPC。hook 的細節與回傳格式見 [`game-server/src/classes/api_docs.md`](../../game-server/src/classes/api_docs.md)。
+
 ### 3.4 附屬微服務 (Event Sourcing Subsystems)
+
+> 規劃中，尚未實作。事件總線決定使用 NATS JetStream（subject `game.<gameId>.event`），見 [plugin-runtime-design.md](plugin-runtime-design.md) 第 6 節。
 
 - 對於「成就解鎖」、「牌局回放存檔」、「全服統計數據」等不影響玩家當下能不能打出某張牌的邏輯，Game Server 直接拋 `EVENT_DISCARD_TILE` 到 Redis/Kafka Queue 中。這類被動系統自行去 Queue 消化這些 Event，絕不阻擋核心 Game 的執行續。

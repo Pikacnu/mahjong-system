@@ -6,6 +6,12 @@
 
 透過使用共用的 `UIAction` 介面與 `encodeToBytes` 作為傳輸橋樑，我們可以在保持 gRPC 輕量的情況下，讓前端具備強大的擴充渲染能力。
 
+## 現況核對（2026-11-05）
+
+- `modules/utils/src/ui_actions.ts` 尚未建立，`UIAction` / `UIComponentType` 目前不存在於程式中。
+- `encodeToBytes` / `decodeFromBytes` 已存在（`modules/utils/src/utils.ts`）。
+- `room.proto` 的 `ReactionMessage` 目前是 `google.protobuf.Struct payload`，不是計畫中的 `bytes data`。若要改為 bytes，需要修改 proto。
+
 ---
 
 ## 核心設計理念：UI 即資料 (UI as Data)
