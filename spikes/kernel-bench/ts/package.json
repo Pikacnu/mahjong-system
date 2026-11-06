@@ -1,0 +1,13 @@
+{
+  "name": "kernel-bench",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "bench": "bun run src/bench.ts"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "1.14.3",
+    "quickjs-emscripten": "0.32.0"
+  }
+}

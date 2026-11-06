@@ -16,7 +16,7 @@ A Bun + TypeScript microservice platform for a plugin-driven Mahjong game. Game 
   helm lint helm/mahjong-system                      # needs helm
   ```
 
-- **`spikes/` is git-ignored.** The benchmarks and `spikes/kernel-bench/RESULTS.md` exist only on the machine where they were run, so links to them do not resolve on a fresh clone.
+- **Spike tests:** the test files and generated `results/` are git-ignored, so `bun test` in `spikes/kernel-bench/ts` only works where those files exist. The benchmarks and `RESULTS.md` are tracked and reproducible.
 
 ## Architecture
 

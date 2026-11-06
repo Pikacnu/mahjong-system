@@ -39,4 +39,9 @@ modules/proto/src/proto/services/NUL
 /test
 modules/proto/src/proto/NUL
 
-spikes/
+
+# kernel-bench: test programs and generated results.
+# Benchmark programs and core library stay tracked so RESULTS.md can be reproduced.
+spikes/kernel-bench/ts/test/
+spikes/kernel-bench/go/core_test.go
+spikes/kernel-bench/results/
