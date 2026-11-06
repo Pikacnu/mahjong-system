@@ -1,0 +1,1 @@
+ALTER TABLE "function_storage"."plugin_definitions" ALTER COLUMN "hooks" SET NOT NULL;

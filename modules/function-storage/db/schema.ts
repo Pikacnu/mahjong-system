@@ -101,7 +101,7 @@ export const pluginDefinitions = schema.table(
       .notNull()
       .references(() => versions.id),
     defaultStore: jsonb('default_store').notNull().default('{}'),
-    hooks: text('hooks').notNull().array(),
+    hooks: text('hooks').array().notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
